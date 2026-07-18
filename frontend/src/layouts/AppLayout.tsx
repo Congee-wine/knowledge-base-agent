@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Avatar, Button, Input } from 'antd'
-import { AppstoreOutlined, BellOutlined, DatabaseOutlined, FileTextOutlined, LineChartOutlined, LogoutOutlined, RobotOutlined, SearchOutlined } from '@ant-design/icons'
+import { AppstoreOutlined, BellOutlined, DatabaseOutlined, LogoutOutlined, RobotOutlined, SearchOutlined } from '@ant-design/icons'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { logout } from '../lib/auth'
 import type { User } from '../types/auth'
@@ -15,8 +15,6 @@ const navItems = [
 
 const agents = [
   { name: 'AI管家', to: '/robot/chat', icon: <RobotOutlined />, iconClass: 'bg-gradient-to-br from-cyan-200 to-indigo-500' },
-  { name: '企业级知识库必要性诊断', to: '/robot/knowledge-diagnosis', icon: <FileTextOutlined />, iconClass: 'bg-gradient-to-br from-sky-100 to-blue-300' },
-  { name: '销售专家', to: '/robot/sales-expert', icon: <LineChartOutlined />, iconClass: 'bg-gradient-to-br from-slate-700 to-blue-950' },
 ]
 
 export function AppLayout({ user, onLogout }: Props) {

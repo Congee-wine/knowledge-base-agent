@@ -60,8 +60,6 @@ function App() {
           <Route path="/robot/chat" element={<AiManagerPage />} />
           <Route path="/app" element={<EmptyPage />} />
           <Route path="/document" element={<EmptyPage />} />
-          <Route path="/robot/knowledge-diagnosis" element={<EmptyPage />} />
-          <Route path="/robot/sales-expert" element={<EmptyPage />} />
           <Route path="*" element={<Navigate to="/app" replace />} />
         </Route>
       </Routes> : <Routes>
