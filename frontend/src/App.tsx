@@ -1,41 +1,48 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { ConfigProvider } from 'antd'
+import { useQuery } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AppLayout } from './layouts/AppLayout'
+import { getCurrentUser } from './api/auth'
 import { clearStoredSession, getTokenExpiresAt, getStoredAccessToken, refreshSession } from './lib/auth'
 import { AuthPage } from './pages/AuthPage'
 import { AiManagerPage } from './pages/AiManagerPage'
 import { EmptyPage } from './pages/EmptyPage'
-import type { User } from './types/auth'
+import { NotFoundPage } from './pages/NotFoundPage'
+import { GuestOnly } from './routes/GuestOnly'
+import { RequireAuth } from './routes/RequireAuth'
+import { routes } from './routes/paths'
+import { useAuthStore } from './stores/auth'
 
 const REFRESH_BEFORE_EXPIRY_MS = 3 * 60 * 1000
 
 function App() {
-  const [user, setUser] = useState<User | null>(null)
-  const [checkingSession, setCheckingSession] = useState(true)
+  const user = useAuthStore(state => state.user)
+  const setUser = useAuthStore(state => state.setUser)
+  const clearUser = useAuthStore(state => state.clearUser)
+  const accessToken = getStoredAccessToken()
+  const sessionQuery = useQuery({
+    queryKey: ['auth', 'current-user', accessToken],
+    queryFn: async () => {
+      try {
+        return await getCurrentUser(accessToken!)
+      } catch {
+        return refreshSession()
+      }
+    },
+    enabled: Boolean(accessToken),
+    retry: false,
+  })
 
   useEffect(() => {
-    void (async () => {
-      const accessToken = getStoredAccessToken()
-      if (!accessToken) {
-        setCheckingSession(false)
-        return
-      }
-      try {
-        const response = await fetch('http://127.0.0.1:8000/api/auth/me', { headers: { Authorization: `Bearer ${accessToken}` } })
-        if (!response.ok) throw new Error('access token expired')
-        setUser(await response.json() as User)
-      } catch {
-        try {
-          setUser(await refreshSession())
-        } catch {
-          clearStoredSession()
-        }
-      } finally {
-        setCheckingSession(false)
-      }
-    })()
-  }, [])
+    if (sessionQuery.data) setUser(sessionQuery.data)
+  }, [sessionQuery.data, setUser])
+
+  useEffect(() => {
+    if (!sessionQuery.isError) return
+    clearStoredSession()
+    clearUser()
+  }, [sessionQuery.isError, clearUser])
 
   useEffect(() => {
     if (!user) return
@@ -45,26 +52,32 @@ function App() {
     const timer = window.setTimeout(() => {
       void refreshSession().then(setUser).catch(() => {
         clearStoredSession()
-        setUser(null)
+        clearUser()
       })
     }, delay)
     return () => window.clearTimeout(timer)
   }, [user])
 
-  if (checkingSession) return <div className="grid h-screen place-items-center bg-slate-50 text-sm text-slate-500">正在检查登录状态…</div>
+  if (accessToken && sessionQuery.isPending) return <div className="grid h-screen place-items-center bg-slate-50 text-sm text-slate-500">正在检查登录状态…</div>
 
   return <ConfigProvider theme={{ token: { colorPrimary: '#4f6cff', borderRadius: 10, fontFamily: 'Microsoft YaHei, PingFang SC, Arial, sans-serif' } }}>
     <BrowserRouter>
-      {user ? <Routes>
-        <Route element={<AppLayout user={user} onLogout={() => setUser(null)} />}>
-          <Route path="/robot/chat" element={<AiManagerPage />} />
-          <Route path="/app" element={<EmptyPage />} />
-          <Route path="/document" element={<EmptyPage />} />
-          <Route path="*" element={<Navigate to="/app" replace />} />
+      <Routes>
+        <Route path={routes.home} element={<Navigate to={routes.app.chat} replace />} />
+        <Route element={<GuestOnly user={user} />}>
+          <Route path={routes.login} element={<AuthPage mode="login" onAuthenticated={setUser} />} />
+          <Route path={routes.register} element={<AuthPage mode="register" onAuthenticated={setUser} />} />
         </Route>
-      </Routes> : <Routes>
-        <Route path="*" element={<AuthPage onAuthenticated={setUser} />} />
-      </Routes>}
+        <Route element={<RequireAuth user={user} />}>
+          <Route element={user ? <AppLayout user={user} onLogout={clearUser} /> : null}>
+            <Route path={routes.app.root} element={<Navigate to={routes.app.chat} replace />} />
+            <Route path={routes.app.chat} element={<AiManagerPage />} />
+            <Route path={routes.app.agents} element={<EmptyPage />} />
+            <Route path={routes.app.knowledgeBases} element={<EmptyPage />} />
+          </Route>
+        </Route>
+        <Route path="*" element={<NotFoundPage />} />
+      </Routes>
     </BrowserRouter>
   </ConfigProvider>
 }
