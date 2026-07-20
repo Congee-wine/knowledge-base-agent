@@ -2,6 +2,37 @@
 
 > 本文件中的“已采用”表示该选择可由当前代码直接观察到；历史决策日期未保留时，使用本次核查日期记录。
 
+## ADR-005：智能体、会话和知识库的首期技术方案
+
+- **日期**：2026-07-20
+- **状态**：已采用
+
+### 背景
+
+项目已确认需要多账号隔离的内置 AI 管家、用户自建智能体、默认打开规则、会话历史，以及支持 PDF、Markdown、图片的可选文件/文件夹检索范围。现有仓库已有 React、FastAPI、PostgreSQL 和 pgvector 基础，但业务页面和真实问答流程尚未实现。
+
+### 可选方案
+
+1. 更换为一体化智能体/RAG 平台或直接在前端调用模型服务。
+2. 保留现有前后端分离架构，在后端以自有模块实现首期会话和 RAG 流程；模型、Embedding、OCR 和对象存储通过适配接口隔离。
+3. 一开始引入 LangChain、LangGraph、独立向量数据库和复杂多智能体工作流。
+
+### 最终决定
+
+采用方案 2：保留 React + TypeScript + Vite + Ant Design + Ant Design X + React Query + Zustand 前端，保留 FastAPI + Pydantic 后端和 PostgreSQL + pgvector；原始文件存入 S3 兼容对象存储（本地开发可用 MinIO），长耗时解析与嵌入通过 Redis 队列和独立 Worker 执行。首期受控采用 LangChain 和 LangGraph：LangChain 负责聊天模型与 Embedding 适配、提示词模板、统一 `Document` 对象和文本切分；LangGraph 使用显式、无循环的状态图编排“加载会话上下文 → 检索资料 → 生成回答 → 持久化结果”，并将状态和令牌事件流式传给 API 层。首期聊天模型供应商确定为 DeepSeek，通过其 OpenAI 兼容 Chat Completions 接口适配；Embedding 采用本地 `BAAI/bge-m3`，在独立 Worker 中运行，模型权重不经云端 Embedding API 传输。PDF 使用 PyMuPDF 提取文本，TXT/Markdown 使用本地解析，Word（`.docx`）使用 `python-docx` 提取正文；首期不支持图片、扫描版 PDF 和 OCR。
+
+### 选择理由
+
+现有架构已能承载该方案，避免在需求仍增长时更换前后端基础设施。PostgreSQL 同时保存账号、会话、智能体和知识库元数据，pgvector 保存分块向量，便于在同一事务和查询中强制 `user_id` 隔离。对象存储避免把大文件放入关系表；后台任务避免上传/索引阻塞 HTTP 请求，并可记录处理状态和重试。LangChain 为模型、Embedding、提示词和文本切分提供统一且可替换的接口；LangGraph 以显式状态与节点输出保留流程追踪、流式状态通知和将来添加节点的边界。首期需求尚未出现多工具规划、循环决策或人工审批流程，因此不使用通用 Agent/ReAct 循环，不让图节点直接访问数据库，也不向路由层暴露 LangChain/LangGraph 类型；节点只调用职责独立的业务服务，确保仍可单独测试和定位问题。
+
+### 影响与代价
+
+需要在正式实施前新增并评估数据库迁移工具、对象存储客户端、DOCX 解析、Redis、后台任务、Ant Design X 和本地 BGE 推理依赖；还需要部署 PostgreSQL/pgvector、Redis、对象存储和 Worker。`bge-m3` 模型权重和本地推理需要磁盘、内存与 CPU 资源，但没有按次 Embedding API 费用。不能把 DeepSeek 密钥或其他供应商地址写入代码或文档。大规模向量数据时需评估 pgvector 索引参数、召回率、延迟和成本；首期应先以可验证的精确检索/小规模索引开始，再基于实际数据选择 HNSW 或 IVFFlat。
+
+### 后续条件
+
+在实施前锁定 DeepSeek 的具体聊天模型、`bge-m3` 推理库及依赖版本，并完成本地资源与成本评估。图片/OCR 作为后续独立需求重新设计。若后续增加网页搜索、外部系统操作、多轮工具规划或审批工作流，再在现有 LangGraph 工作流上新增受控节点、工具白名单和审批边界，而非将其放入聊天路由。
+
 ## ADR-004：前端按认证边界组织嵌套路由
 
 - **日期**：2026-07-18
