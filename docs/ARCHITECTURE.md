@@ -31,9 +31,17 @@
 
 ### 后端：`backend/`
 
-- `main.py`：FastAPI 应用、开发环境 CORS、中间件、启动初始化、健康检查与路由注册。
+- `main.py`：FastAPI 应用、开发环境 CORS、健康检查与路由注册；启动时不修改数据库结构。
 - `config.py`：从 `.env` 读取数据库地址和认证配置；`DATABASE_URL` 为必需配置。
-- `database.py`：PostgreSQL 连接、扩展启用、认证表初始化和过期记录清理。
+- `database.py`：psycopg PostgreSQL 连接；业务代码不在此处创建或修改表。
+- `migrations/`：Alembic 版本化数据库迁移；当前包含认证基线和 pgvector 扩展启用。
+- `integrations/object_storage.py`：MinIO/S3 兼容私有对象存储客户端适配。
+- `workers/queue.py`：Redis/RQ 文档处理队列适配。
+- `workers/tasks.py`：无副作用的基础设施测试任务；不承担文档解析业务。
+- `workers/runner.py`：文档处理标准 RQ Worker 进程入口，仅在 Linux Worker 容器中运行。
+- `Dockerfile.worker`：Worker 的 Python Linux 运行镜像定义；构建时不复制本机 `.env`。
+- `scripts/verify_infrastructure.py`：验证 Redis、私有 Bucket、对象写读删除和 RQ 测试任务的本地脚本。
+- `docker-compose.infrastructure.yml`：本地 Redis、MinIO 及持久化数据卷的启动配置。
 - `dependencies.py`：HTTP Bearer 认证依赖和当前用户解析。
 - `routers/auth.py`：认证 HTTP 路由、请求绑定和响应状态。
 - `routers/chat.py`：认证保护的聊天路由；尚未连接模型或检索服务。
@@ -47,9 +55,9 @@
 - `users`：用户 ID、唯一邮箱、密码哈希、创建时间和最近登录时间。
 - `auth_sessions`：会话 ID、用户 ID、当前刷新令牌标识、会话和刷新令牌到期时间、撤销时间。
 - `revoked_tokens`：已撤销访问令牌的标识和过期时间。
-- `vector` 扩展：在启动初始化中请求启用。
+- `vector` 扩展：由认证基线迁移请求启用。
 
-尚未实现：文档原文件存储、文档元数据、分片、嵌入向量表、向量索引、检索和重排。数据库实际是否已经初始化需连接实例后确认。
+已验证：认证表已初始化并由 Alembic `20260720_0001` 管理；本地 MinIO 私有 Bucket 可创建并完成测试对象写读删除。尚未实现：文档元数据、分片、嵌入向量表、向量索引、检索和重排。
 
 ## 认证流程
 
@@ -95,7 +103,7 @@
 ## 外部依赖与验证
 
 - 前端主要依赖：React、React Router、React Query、Zustand、Ant Design、Vite、TypeScript 和 Tailwind CSS。
-- 后端主要依赖：FastAPI、PyJWT、pwdlib（Argon2）、psycopg、pgvector 和 python-dotenv。
+- 后端主要依赖：FastAPI、PyJWT、pwdlib（Argon2）、psycopg、pgvector、python-dotenv、Alembic、SQLAlchemy（仅迁移执行）、MinIO SDK、Redis 和 RQ。
 - CI：GitHub Actions 对后端运行 Python 编译检查，对前端运行 `pnpm install --frozen-lockfile` 与 `pnpm build`。
 
-本次本地核查已通过后端 Python 编译和前端构建；数据库、API 和浏览器端到端行为仍待验证。
+本次本地核查已通过后端 Python 编译、Alembic 认证基线对齐、真实 PostgreSQL 认证集成、Redis、MinIO 私有 Bucket 写读删除和 Docker Linux 标准 RQ Worker 测试任务执行；浏览器端到端行为仍待验证。

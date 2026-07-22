@@ -33,7 +33,7 @@ users ──< agents ──< conversations ──< messages ──< message_cita
 
 ### DB-002：`agents`
 
-字段：`id`、`owner_user_id`（内置智能体为空）、`kind`（`builtin`/`personal`）、`name`、`description`、`avatar_key`、`system_prompt`、`welcome_message`、`allow_conversation_upload`、`created_at`、`updated_at`。唯一约束：个人智能体 `(owner_user_id, lower(name))`；内置智能体由固定种子 ID 维护。
+字段：`id`、`owner_user_id`（内置智能体为空）、`kind`（`builtin`/`personal`）、`name`、`description`、`avatar_key`、`system_prompt`、`welcome_message`、`allow_conversation_upload`、`deleted_at`、`created_at`、`updated_at`。唯一约束：个人活跃智能体 `(owner_user_id, lower(name))`；内置智能体由固定种子 ID 维护。软删除只写入 `deleted_at`，不删除关联会话、消息或引用。
 
 ### DB-003：`agent_preset_questions` 与 `agent_knowledge_scopes`
 
@@ -61,7 +61,7 @@ users ──< agents ──< conversations ──< messages ──< message_cita
 
 ## 4. 索引与查询
 
-- `agents(owner_user_id, updated_at DESC)`：个人智能体列表。
+- `agents(owner_user_id, deleted_at, updated_at DESC)`：个人活跃智能体列表。
 - `conversations(owner_user_id, agent_id, updated_at DESC)`：当前智能体会话侧栏。
 - `knowledge_nodes(owner_user_id, parent_id, name)`：文件夹浏览。
 - `document_chunks(owner_user_id, document_version_id, ordinal)`：文件分块读取。
@@ -70,7 +70,7 @@ users ──< agents ──< conversations ──< messages ──< message_cita
 ## 5. 删除、迁移与安全
 
 - 本期不对资料树开放删除/移动接口，因此不定义用户触发的级联删除流程。
-- 智能体删除受默认设置限制；删除后会话保留策略不在本期实现，接口暂不提供删除。
+- 智能体删除使用软删除；删除前必须清空默认设置。已删除智能体关联会话、消息和引用保留，但首期不提供恢复或已删除智能体历史查看入口。
 - 所有新表通过版本化迁移创建，替代新增业务表的启动时 DDL。
 - 原始对象仅按 `storage_key` 引用；下载通过服务端鉴权生成临时授权，不向前端返回永久地址。
 - 日志、错误和引用不得包含对象存储凭据、模型密钥或完整受限资料。

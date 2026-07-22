@@ -60,7 +60,7 @@
 - `name`：1–80 字符；`description`：最多 500 字符；`systemPrompt`：最多 8000 字符。
 - `knowledgeScopes` 节点必须属于当前用户；空数组合法。
 - 内置智能体的 PATCH/DELETE 返回 `AGENT_IMMUTABLE`。
-- 删除默认智能体返回 `DEFAULT_AGENT_MUST_BE_CLEARED`。
+- 删除默认智能体返回 `DEFAULT_AGENT_MUST_BE_CLEARED`；删除成功仅写入软删除标记，响应 `204 No Content`。
 
 ## API-005：设为默认打开
 

@@ -1,6 +1,13 @@
-fastapi[standard]
-pyjwt
-pwdlib[argon2]
-psycopg[binary]
-pgvector
-python-dotenv
+fastapi[standard]>=0.115,<1.0
+pyjwt>=2.10,<3.0
+pwdlib[argon2]>=0.3,<1.0
+psycopg[binary]>=3.2,<4.0
+pgvector>=0.3,<1.0
+python-dotenv>=1.0,<2.0
+
+# Infrastructure: schema changes, private source files, and background jobs.
+alembic>=1.15,<2.0
+SQLAlchemy>=2.0,<3.0
+minio>=7.2,<8.0
+redis>=5.0,<7.0
+rq>=2.0,<3.0

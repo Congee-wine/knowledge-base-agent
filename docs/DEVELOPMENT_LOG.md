@@ -1,5 +1,202 @@
 # 开发日志
 
+## 2026-07-22：Linux 标准 RQ Worker 构建与执行验证
+
+### 任务目标
+
+完成 Docker Linux Worker 镜像构建，并验证由本机投递、容器内标准 RQ Worker 执行的任务链路。
+
+### 实现内容
+
+- 在 Docker Desktop 的用户级 daemon 配置中保留原有构建设置并添加一个本地开发镜像加速器，重启 Docker Engine 后确认配置生效。
+- 成功拉取 `python:3.12-slim` 并构建 Worker 镜像；恢复 Redis、MinIO 和 Worker 容器。
+- 从 Windows 本机运行验证脚本投递任务，Worker 容器日志确认标准 RQ Worker 成功执行；任务结果校验执行平台为 Linux。
+- 清理本次探针任务记录，未修改业务队列、业务文件或数据库数据。
+
+### 主要文件
+
+- `backend/Dockerfile.worker`、`backend/.dockerignore`：Worker 镜像定义与构建上下文安全边界。
+- `docker-compose.infrastructure.yml`：Redis、MinIO 与 Linux Worker 的本地编排。
+- `backend/workers/runner.py`、`backend/workers/tasks.py`、`backend/scripts/verify_infrastructure.py`：标准 Worker 入口与 Linux 执行验证。
+
+### 技术方案
+
+Docker Desktop 的 Linux 容器支持 RQ 标准 Worker 所需的 Unix 子进程模型。镜像加速器仅作用于本机 Docker 拉取，不写入项目源码或文档中的敏感凭据；生产部署仍应使用受控镜像仓库和镜像摘要管理。
+
+### 接口或数据变化
+
+无新增 HTTP API、业务表或生产依赖。新增本机 Docker 镜像缓存、Worker 容器及开发镜像加速器配置。
+
+### 验证情况
+
+- 通过：Docker Engine 已识别配置的 registry mirror，`python:3.12-slim` 拉取成功。
+- 通过：Worker 镜像构建，Redis、MinIO、Worker 容器运行。
+- 通过：验证脚本通过；Worker 日志确认标准 RQ Worker 在 Linux 容器中成功执行探针任务。
+- 通过：探针任务记录已清理，队列无待处理探针任务。
+
+### 遗留问题
+
+- `backend/.env` 仍需由开发者持久化 Redis 与 MinIO 的本地开发配置，避免后续脚本依赖临时环境变量。
+
+## 2026-07-22：Linux 标准 RQ Worker 容器化尝试
+
+### 任务目标
+
+将 RQ Worker 从 Windows 本地兼容模式调整为 Docker Linux 容器中的标准 Worker，使其运行模型与后续部署保持一致。
+
+### 实现内容
+
+- 新增 `backend/Dockerfile.worker` 和 `.dockerignore`，镜像安装现有后端依赖且不复制本机 `.env`。
+- 为 Compose 新增 `worker` 服务，容器内通过 `redis`、`minio` 服务名访问基础设施，并挂载后端源码用于本地开发。
+- 移除 `SimpleWorker` 分支；Worker 入口现在统一使用标准 RQ `Worker`。
+- 测试任务增加 Linux 平台标识，验证脚本只有在任务由 Linux 容器执行时才通过。
+
+### 主要文件
+
+- `backend/Dockerfile.worker`：标准 Worker 镜像定义。
+- `backend/.dockerignore`：防止本机环境文件和虚拟环境进入镜像构建上下文。
+- `docker-compose.infrastructure.yml`：新增 Worker 服务及容器内网络配置。
+- `backend/workers/runner.py`、`backend/workers/tasks.py`、`backend/scripts/verify_infrastructure.py`：标准 Worker 运行与 Linux 执行结果验证。
+
+### 技术方案
+
+Docker Desktop 运行 Linux 容器，因此 RQ 标准 Worker 可以使用 Unix 子进程模型。FastAPI 仍可在 Windows 本机通过映射端口投递任务；Worker 在 Compose 网络内使用服务名访问 Redis 和 MinIO。后续 Worker 如需连接当前本机 PostgreSQL，必须显式使用 Docker Desktop 宿主机地址，不能使用容器内 `127.0.0.1`。
+
+### 接口或数据变化
+
+无新增 HTTP API、业务表或生产依赖。新增待构建的 Worker 镜像与 Compose 服务。
+
+### 验证情况
+
+- 通过：新增 Python 模块静态编译和 Compose 配置校验。
+- 未通过：Docker 构建 `python:3.12-slim` 时无法连接 `auth.docker.io` 获取令牌，重试后同样失败；本地不存在可离线使用的 Python 基础镜像。
+- 未执行：Linux 容器中的标准 Worker 任务执行验证；需在镜像成功构建后执行。
+
+### 遗留问题
+
+- 需恢复 Docker Hub 网络访问或在 Docker Desktop 配置可用的镜像加速器/代理后重试构建。
+
+## 2026-07-22：Redis、MinIO 与 RQ Worker 本地联调
+
+### 任务目标
+
+完成第一阶段剩余的对象存储、任务队列与 Worker 可运行性验证，不引入文件解析、Embedding、模型调用或 RAG 业务代码。
+
+### 实现内容
+
+- 新增 `docker-compose.infrastructure.yml`，用 Docker Desktop 启动 Redis 7.4.2 与 MinIO，并使用命名数据卷保留本地开发数据。
+- 新增无副作用的 RQ 测试任务、跨平台 Worker 进程入口和基础设施验证脚本。
+- 验证 Redis `ping`、私有 Bucket 自动创建、测试文本写入/读取/删除，以及测试任务投递和执行。
+- Windows 本地将 RQ Worker 切换为 `SimpleWorker`，避免标准 `Worker` 对 Unix 子进程模型的依赖；Linux 环境仍使用标准 Worker。
+- 为避免覆盖现有数据库与 JWT 配置，本次仅在验证进程中注入本地 Redis/MinIO 配置；`backend/.env` 尚待开发者手动补齐相应变量。
+
+### 主要文件
+
+- `docker-compose.infrastructure.yml`：本地 Redis、MinIO 和数据卷配置。
+- `backend/workers/tasks.py`：无副作用的 Worker 探针任务。
+- `backend/workers/runner.py`：根据操作系统选择 RQ Worker 实现的进程入口。
+- `backend/scripts/verify_infrastructure.py`：Redis、MinIO 与 RQ 的端到端基础设施验证。
+- `docs/PROJECT_STATUS.md`、`docs/ARCHITECTURE.md`、`docs/DECISIONS.md`：同步真实运行状态和平台差异。
+
+### 技术方案
+
+Redis 只保存队列和任务状态，MinIO 保存原始大文件，PostgreSQL 继续负责关系数据和元数据。验证脚本对 MinIO 使用临时对象并立即删除，避免将测试文件误当作业务资料。Windows 使用 `SimpleWorker` 是本地兼容性措施，生产 Linux 仍保留隔离性更好的标准 RQ Worker。
+
+### 接口或数据变化
+
+未新增 HTTP API、业务表或生产依赖。Docker 新增本地 Redis/MinIO 容器、网络与命名数据卷；MinIO 创建了私有开发 Bucket。
+
+### 验证情况
+
+- 通过：Docker Compose 配置校验，Redis 容器健康，MinIO 容器运行。
+- 通过：Redis `ping`、MinIO Bucket 创建与测试文件写读删除。
+- 通过：RQ 测试任务返回“Worker 已运行”。
+- 通过：对象存储配置缺失时明确列出 `OBJECT_STORAGE_ENDPOINT`、`OBJECT_STORAGE_ACCESS_KEY` 和 `OBJECT_STORAGE_SECRET_KEY`。
+- 通过：新增 Python 模块静态编译。
+- 未执行：浏览器端到端测试、真实文件解析、向量化、模型调用和 RAG 测试；均不属于第一阶段范围。
+
+### 遗留问题
+
+- 进入阶段 2 前仍需为认证服务补充自动化测试。
+- 本地 MinIO 初始账号只限开发环境，后续部署必须替换为非默认凭据。
+
+## 2026-07-22：认证基础设施真实集成验证
+
+### 任务目标
+
+验证本地 PostgreSQL 的认证表与 Alembic 认证基线迁移一致，并完成认证接口的真实数据库集成检查。
+
+### 实现内容
+
+- 检查本机 PostgreSQL 连接、现有认证表结构及 Alembic 版本状态。
+- 确认旧认证表与 `20260720_0001` 迁移定义一致后，使用 `alembic stamp head` 将现有结构纳入版本管理，未重复创建表。
+- 使用临时测试用户完成注册、登录、获取当前用户、刷新令牌、登出、撤销令牌拒绝及受保护聊天回显接口验证；测试结束后清理测试用户、会话和撤销令牌。
+
+### 主要文件
+
+- `docs/PROJECT_STATUS.md`：同步 PostgreSQL 验证结果、Redis/MinIO 联调阻塞和后续计划。
+- `docs/DEVELOPMENT_LOG.md`：记录本次真实集成验证过程。
+
+### 技术方案
+
+对已存在但无 Alembic 版本记录的认证表，先逐字段比对迁移定义再执行 `stamp`，避免对已有表重复运行建表迁移。集成测试通过 FastAPI `TestClient` 调用真实 PostgreSQL，覆盖令牌轮换和撤销行为。
+
+### 接口或数据变化
+
+数据库新增 `alembic_version` 记录，值为 `20260720_0001`；认证业务表结构、API 契约和应用依赖均未修改。
+
+### 验证情况
+
+- 通过：Alembic 认证基线版本已记录为 `20260720_0001`。
+- 通过：注册（201）、登录（200）、`/me`（200）、受保护 `/api/chat`（200）、刷新令牌（200）、登出（204）和已撤销访问令牌拒绝（401）。
+- 未执行：Redis、MinIO、RQ Worker 与浏览器端到端测试；本机未发现 Redis/MinIO 服务且对象存储配置未填写。
+
+### 遗留问题
+
+- 需启动并配置 Redis、MinIO 后再验证对象存储和异步文档处理能力。
+
+## 2026-07-20：阶段 1 数据库迁移与基础设施边界
+
+### 任务目标
+
+将认证表从 FastAPI 启动时直接执行的 DDL 迁移到版本化脚本，并为私有对象存储和后台任务建立独立适配边界。
+
+### 实现内容
+
+- 新增 Alembic 迁移环境和认证基线迁移。
+- 移除应用启动时自动建表逻辑；服务启动不再隐式修改数据库结构。
+- 集中补充 Redis、对象存储、DeepSeek 和 BGE 的环境变量定义。
+- 新增 MinIO 和 RQ 的最小适配器；尚未投递真实文档任务。
+
+### 主要文件
+
+- `backend/migrations/`：数据库版本化迁移及旧认证数据库的安全接入说明。
+- `backend/integrations/object_storage.py`：私有对象存储客户端创建边界。
+- `backend/workers/queue.py`：文档处理队列创建边界。
+- `backend/config.py`：集中、显式的运行配置。
+
+### 技术方案
+
+使用 Alembic 管理结构变更，保留 psycopg 作为业务 Repository 的数据库访问驱动；文件和异步任务均不由路由直接处理。
+
+### 接口或数据变化
+
+- 新增数据库迁移基线 `20260720_0001`，数据库须执行 `alembic upgrade head` 后才能运行 API。
+- 未新增业务 API。
+
+### 验证情况
+
+- 新增依赖已在 `backend/.venv` 安装成功。
+- `python -m compileall -q .` 通过。
+- `alembic upgrade head --sql` 通过，已生成认证基线的 PostgreSQL DDL，但未对真实数据库执行。
+- `alembic current` 已成功连接现有 PostgreSQL；修复了 Alembic 默认尝试使用 psycopg2 的兼容问题，改为显式使用项目已有的 psycopg 3 方言。
+- FastAPI `/api/health` 测试和 RQ 队列对象构造测试通过；对象存储缺少配置时会明确列出缺失环境变量。
+- Redis、MinIO 与真实 PostgreSQL 尚未运行，连通性和 Worker 执行仍待验证。
+
+### 遗留问题
+
+- 开发机未检测到 Docker；需要后续提供可用的 PostgreSQL/pgvector、Redis 和 MinIO 服务后执行联调。
+
 ## 2026-07-20：AI 管家会话侧栏规则修正
 
 ### 任务目标

@@ -1,5 +1,36 @@
 # 技术决策记录
 
+## ADR-006：第一阶段基础设施依赖与迁移边界
+
+- **日期**：2026-07-20
+- **状态**：已采用
+
+### 背景
+
+认证表当前由 FastAPI 启动时的 DDL 创建，无法记录数据库实际版本；知识库还需要私有文件存储和不阻塞 HTTP 请求的后台处理。用户要求每个开发阶段都有详细且可解释的后端与 AI 开发计划。
+
+### 可选方案
+
+1. 继续由应用启动代码创建、修改数据库表，并在 HTTP 请求中同步解析文件。
+2. 采用 Alembic 维护数据库迁移，使用 MinIO S3 兼容 SDK 保存私有源文件，使用 Redis + RQ 执行后台任务。
+3. 改为完整 ORM、Celery 和云厂商专有存储服务。
+
+### 最终决定
+
+采用方案 2。保留现有 psycopg Repository 访问模式；Alembic 仅作为迁移执行器，避免无必要地同时引入 SQLAlchemy ORM。MinIO SDK 通过适配器使用，RQ 仅用于文件解析、切分和向量化等可重试的耗时任务。
+
+### 选择理由
+
+Alembic 使每次结构变化成为可审查、可升级的脚本；MinIO Python SDK 同时兼容 MinIO 与 S3 兼容存储；RQ 不需要预先定义复杂消息路由，适合当前单人维护且任务类型有限的项目。[Alembic 文档](https://alembic.sqlalchemy.org/en/latest/)、[MinIO Python SDK 文档](https://docs.min.io/aistor/developers/sdk/python/)、[RQ 文档](https://python-rq.org/docs/)
+
+### 影响与代价
+
+新增 `alembic`、`SQLAlchemy`、`minio`、`redis`、`rq` 依赖，并需要运行 PostgreSQL/pgvector、Redis 和 S3 兼容存储。本地开发通过 Docker Desktop 和 `docker-compose.infrastructure.yml` 运行 Redis、MinIO 与 Linux Worker，已验证对象存储和标准 RQ 测试任务。为统一开发与部署，标准 `Worker` 运行在 Linux 容器中，而不是在 Windows 使用 `SimpleWorker`；镜像通过配置的本地开发镜像加速器成功构建。
+
+### 后续条件
+
+阶段 3 才增加 PyMuPDF、python-docx、LangChain 文本切分器和本地 bge-m3 推理依赖；阶段 4 才增加 LangGraph 与 DeepSeek Chat 适配。每次新增依赖均先说明作用和验证结果。
+
 > 本文件中的“已采用”表示该选择可由当前代码直接观察到；历史决策日期未保留时，使用本次核查日期记录。
 
 ## ADR-005：智能体、会话和知识库的首期技术方案

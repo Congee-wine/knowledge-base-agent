@@ -24,6 +24,7 @@
 - `API_DESIGN.md`：前后端接口契约。
 - `DATA_DESIGN.md`：关系数据、对象存储和向量数据设计。
 - `ACCEPTANCE_CRITERIA.md`：可执行的验收标准。
+- `IMPLEMENTATION_PLAN.md`：分阶段实施顺序、风险与验证计划。
 - `CHANGELOG.md`：需求与设计变更记录。
 
 ## 实现状态

@@ -1,7 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from database import init_database
 from routers import auth, chat
 
 
@@ -14,12 +13,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.on_event("startup")
-def startup() -> None:
-    init_database()
-
 
 @app.get("/api/health")
 def health_check() -> dict[str, str]:
