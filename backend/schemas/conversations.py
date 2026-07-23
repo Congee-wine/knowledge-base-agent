@@ -46,6 +46,13 @@ class CreateMessageRequest(BaseModel):
         return normalized_content
 
 
+class SendMessageRequest(CreateMessageRequest):
+    """Send a message to an existing conversation or start one lazily."""
+
+    agent_id: str = Field(alias="agentId")
+    conversation_id: str | None = Field(default=None, alias="conversationId")
+
+
 class EchoMessageResponse(BaseModel):
     conversation: ConversationResponse
     user_message: MessageResponse = Field(serialization_alias="userMessage")

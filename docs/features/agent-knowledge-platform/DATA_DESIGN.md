@@ -42,7 +42,7 @@ users ──< agents ──< conversations ──< messages ──< message_cita
 
 ### DB-004：`conversations`、`messages`、`message_citations`
 
-- 会话：`id`、`owner_user_id`、`agent_id`、`title`、`created_at`、`updated_at`。
+- 会话：`id`、`owner_user_id`、`agent_id`、`title`、`is_draft`、`created_at`、`updated_at`。聊天页面不创建 `is_draft=true` 记录：空白新会话仅存在于前端。该字段和部分唯一索引 `(owner_user_id, agent_id) WHERE is_draft` 保留用于兼容历史/直接创建接口；正常聊天首次发送直接创建 `is_draft=false` 的会话并写入消息。
 - 消息：`id`、`conversation_id`、`role`（`user`/`assistant`）、`content`、`generation_status`（`complete`/`interrupted`/`failed`）、`created_at`。
 - 引用：`message_id`、`document_chunk_id`、`file_name_snapshot`、`page_number`、`excerpt`、`display_order`。
 

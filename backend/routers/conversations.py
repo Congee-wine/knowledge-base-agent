@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 
 from dependencies import get_current_user
 from schemas.auth import UserResponse
@@ -11,6 +11,7 @@ from schemas.conversations import (
     CreateConversationRequest,
     CreateMessageRequest,
     EchoMessageResponse,
+    SendMessageRequest,
 )
 from services import conversations as conversation_service
 
@@ -28,8 +29,11 @@ def read_conversations(
 
 
 @router.post("", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED)
-def create_conversation(data: CreateConversationRequest, current_user: Annotated[UserResponse, Depends(get_current_user)]) -> ConversationResponse:
-    return conversation_service.create_conversation(current_user.id, data.agent_id, data.title)
+def create_conversation(data: CreateConversationRequest, response: Response, current_user: Annotated[UserResponse, Depends(get_current_user)]) -> ConversationResponse:
+    conversation, created = conversation_service.create_conversation(current_user.id, data.agent_id, data.title)
+    if not created:
+        response.status_code = status.HTTP_200_OK
+    return conversation
 
 
 @router.post("/{conversation_id}/messages", response_model=EchoMessageResponse, status_code=status.HTTP_201_CREATED)
@@ -39,6 +43,16 @@ def create_echo_message(
     current_user: Annotated[UserResponse, Depends(get_current_user)],
 ) -> EchoMessageResponse:
     return conversation_service.append_echo_messages(current_user.id, conversation_id, data.content)
+
+
+@router.post("/messages", response_model=EchoMessageResponse, status_code=status.HTTP_201_CREATED)
+def send_message(
+    data: SendMessageRequest,
+    current_user: Annotated[UserResponse, Depends(get_current_user)],
+) -> EchoMessageResponse:
+    return conversation_service.send_echo_message(
+        current_user.id, data.agent_id, data.conversation_id, data.content
+    )
 
 
 @router.get("/{conversation_id}", response_model=ConversationDetailResponse)

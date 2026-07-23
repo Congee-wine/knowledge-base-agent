@@ -20,10 +20,11 @@
 | API-004 | GET/PATCH/DELETE | `/agents/{agentId}` | 获取、更新、删除本人智能体 | FR-002 |
 | API-005 | PUT | `/agents/{agentId}/default` | 设为默认打开 | FR-002 |
 | API-005A | DELETE | `/agents/default` | 清空默认打开设置 | FR-001、FR-002 |
-| API-006 | GET/POST | `/conversations` | 查询/创建会话 | FR-003 |
+| API-006 | GET/POST | `/conversations` | 查询/兼容性创建会话 | FR-003 |
 | API-007 | GET | `/conversations/{conversationId}` | 获取会话与消息 | FR-003 |
 | API-007A | POST | `/conversations/{conversationId}/messages` | 写入用户消息并返回阶段 2 回显 | FR-003 |
-| API-008 | POST | `/conversations/{conversationId}/messages:stream` | 发送消息并接收 SSE | FR-003、FR-005 |
+| API-007B | POST | `/conversations/messages` | 延迟创建会话并发送消息 | FR-003 |
+| API-008 | POST | `/conversations/messages:stream` | 延迟创建会话并接收 SSE | FR-003、FR-005 |
 | API-009 | GET/POST | `/knowledge/nodes` | 获取资料树/创建文件夹 | FR-004 |
 | API-010 | POST | `/knowledge/files` | 上传文件 | FR-004 |
 | API-011 | POST | `/knowledge/files/{fileId}/reprocess` | 重新处理失败文件 | FR-004 |
@@ -84,6 +85,8 @@
 
 创建请求：`{ "agentId": "内置 AI 管家的固定 UUID 或个人智能体 UUID" }`。
 
+聊天页不调用此创建接口创建“新会话”。它保留为兼容性接口：当同一用户、同一智能体已有空白新会话时，返回既有会话和 `200 OK`；仅真正创建新草稿时返回 `201 Created`。新聊天页面不生成这种草稿记录。
+
 会话响应包含 `id`、`agent`、`title`、`updatedAt`、`messages`。会话列表请求必须传入当前智能体 ID；读取会话时，当前智能体与会话归属不匹配应返回资源不存在。
 
 ## API-007A：阶段 2 消息回显
@@ -94,9 +97,19 @@
 - 若会话标题为空，首次用户消息的前 50 个字符作为标题；响应包含更新后的会话和两条已保存消息。
 - 会话不存在、无权访问或关联智能体已删除时返回 `RESOURCE_NOT_FOUND`。
 
+## API-007B：延迟创建并发送消息
+
+- 请求：`{ "agentId": "uuid", "content": "请介绍报价政策", "conversationId": "uuid（可选）" }`。
+- `conversationId` 缺失时，服务端先验证当前用户可使用 `agentId`，再在**同一事务**中创建会话、写入用户消息和当前阶段的助手回显消息；响应结构与 API-007A 相同，状态码为 `201 Created`。
+- `conversationId` 存在时，必须同时属于当前用户和请求中的 `agentId`；服务端只向该既有会话写入消息。归属或智能体不匹配统一返回 `RESOURCE_NOT_FOUND`。
+- 这条接口是后续 SSE 消息入口的非流式阶段 2 版本。接入模型后，首次发送仍由它或其 SSE 版本延迟创建会话，不恢复“点击新会话先建库”的行为。
+
 ## API-008：流式发送消息
 
-请求：`{ "content": "请介绍报价政策", "useKnowledgeBase": true }`。
+请求：`{ "agentId": "uuid", "content": "请介绍报价政策", "conversationId": "uuid（可选）", "useKnowledgeBase": true }`。
+
+- `conversationId` 缺失表示从前端空白新会话首次发送。服务端必须先为当前用户和 `agentId` 创建会话、持久化用户消息，再开始 SSE；首个 `status` 或专用 `conversation` 事件必须携带新会话 ID，供前端刷新历史记录并在连接中断后恢复。
+- `conversationId` 存在时，服务端验证其同时属于当前用户和 `agentId` 后继续会话。不得为了 SSE 恢复“点击新会话即创建记录”的旧行为。
 
 - `useKnowledgeBase` 仅适用于内置 AI 管家；首次进入时前端默认传 `true`，用户关闭“全部资料”后传 `false`。个人智能体的检索范围由其绑定资料决定，前端不显示该开关。
 

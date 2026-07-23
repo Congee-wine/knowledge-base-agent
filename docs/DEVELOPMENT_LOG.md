@@ -1,5 +1,46 @@
 # 开发日志
 
+## 2026-07-23：聊天会话延迟创建与消息回显联调
+
+### 任务目标
+
+将“点击新会话即创建数据库记录”改为常见聊天产品的延迟创建方式，避免慢请求和无消息的历史记录。
+
+### 实现内容
+
+- 新会话按钮仅清空前端当前会话状态和输入内容，不再调用创建会话接口。
+- 新增统一消息入口 `POST /api/conversations/messages`：无 `conversationId` 时在一个事务内创建会话、保存用户消息和阶段 2 回显助手消息；有 ID 时继续既有会话。
+- 新增 Ant Design X `Bubble.List` 消息展示；首次发送成功后才选择响应会话并刷新右侧历史记录。
+- 发送接口同时校验会话归属和请求中的智能体 ID，防止将其他智能体会话作为当前智能体继续写入。
+- 发送采用乐观更新：立即展示用户消息和 Ant Design X 加载气泡；服务端响应后替换为真实消息，失败时恢复输入内容。
+- 发送成功后直接更新 React Query 会话详情缓存，只后台刷新会话列表；避免首次发送或旧会话续聊时额外读取完整会话历史。
+
+### 主要文件
+
+- `backend/schemas/conversations.py`、`backend/routers/conversations.py`：延迟发送请求模型和受保护接口。
+- `backend/services/conversations.py`、`backend/repositories/conversations.py`：事务式首次发送及会话/智能体归属校验。
+- `frontend/src/api/chat.ts`、`frontend/src/features/chat/hooks/useSendMessage.ts`：消息 API 和 React Query 写操作。
+- `frontend/src/pages/AiManagerPage.tsx`、`frontend/src/features/chat/components/ChatMessageList.tsx`、`ChatComposer.tsx`：空白会话状态、消息渲染和发送联调。
+
+### 技术方案
+
+空白会话只存在于页面状态。首条消息提交时由后端在一个事务中完成创建和持久化，避免创建成功但消息失败的孤立会话。当前助手消息仍是阶段 2 回显；后续 SSE 模型接口沿用“首次发送时创建”的契约，不恢复点击即创建。
+
+### 接口或数据变化
+
+- 新增 `POST /api/conversations/messages`，请求包含 `agentId`、`content` 和可选 `conversationId`。
+- 未新增数据库迁移；既有 `is_draft` 字段仅保留给兼容接口和历史数据。
+
+### 验证情况
+
+- 通过：新增的真实 PostgreSQL 集成测试，确认首次消息前列表为空，发送后创建会话并按用户、助手顺序保存消息；也确认不能使用另一智能体 ID 向既有会话写入。
+- 通过：`pnpm exec tsc --noEmit`。
+- 通过：原有 7 项完整智能体/会话集成套件（143 秒）；新增的跨智能体拒绝用例单独通过。
+
+### 遗留问题
+
+- 当前响应是一次性 JSON 回显，不是真实 SSE 或模型答案；模型接入后需在同一延迟创建语义下实现流式 token、取消和失败状态。
+
 ## 2026-07-23：AI 管家聊天页步骤 1 与组件库升级
 
 ### 任务目标
@@ -429,6 +470,76 @@ Ant Design X 仅承担 AI 交互展示，避免与业务接口、鉴权和状态
 ### 遗留问题
 
 - 实施前锁定 DeepSeek 具体聊天模型、BGE 推理库、后台任务框架和数据库迁移工具版本。
+
+## 2026-07-23：单智能体草稿会话约束
+
+### 任务目标
+
+防止同一智能体因重复点击“新会话”产生多个无消息、无标题的空白会话。
+
+### 实现内容
+
+- 为 `conversations` 新增 `is_draft` 字段和按用户、智能体生效的部分唯一索引。
+- 重复创建空白会话时复用已有草稿并返回 `200 OK`；首次创建返回 `201 Created`。
+- 首条消息写入时将会话从草稿标记为非草稿，之后允许创建下一条新会话。
+- 迁移保留每组现有空白会话中最新的一条为草稿，避免历史重复数据阻塞唯一索引创建。
+
+### 主要文件
+
+- `backend/migrations/versions/20260723_0003_single_draft_conversation.py`：字段、历史数据整理和唯一索引迁移。
+- `backend/repositories/conversations.py`：草稿会话的原子创建/复用和首条消息状态转换。
+- `backend/services/conversations.py`、`backend/routers/conversations.py`：复用结果及 HTTP 状态码。
+- `backend/tests/test_agents_conversations_integration.py`：重复创建与首条消息后再创建的集成测试。
+
+### 接口或数据变化
+
+- 新增数据库迁移 `20260723_0003`，已执行 `alembic upgrade head`。
+- `POST /api/conversations` 在复用既有草稿时返回 `200 OK`，响应结构不变。
+
+### 验证情况
+
+- 通过：Alembic 已升级至 `20260723_0003`。
+- 通过：`backend/.venv/Scripts/python.exe -m unittest tests.test_agents_conversations_integration -v`，6 项通过。
+
+### 遗留问题
+
+- 前端消息发送和历史消息渲染仍待下一步接入；该步骤将使草稿会话转为普通会话。
+
+## 2026-07-23：聊天会话创建与历史选择联调
+
+### 任务目标
+
+将 AI 管家页的“新会话”和右侧历史会话列表从静态提示改为真实 API 调用，同时不提前实现消息发送和消息列表展示。
+
+### 实现内容
+
+- 新增会话创建和会话详情读取 API 封装。
+- 使用 React Query Mutation 创建会话，并在成功后失效、刷新当前智能体的会话列表缓存。
+- 页面本地保存已选会话 ID；选择历史记录时读取会话详情，右侧列表显示选中状态。
+- 新建会话期间禁用对应按钮并显示加载状态；创建或详情请求失败时显示可理解的错误提示。
+
+### 主要文件
+
+- `frontend/src/api/chat.ts`：创建和读取单个会话的 HTTP 请求。
+- `frontend/src/types/chat.ts`：会话详情与消息响应类型。
+- `frontend/src/features/chat/hooks/useCreateConversation.ts`：创建会话和列表缓存失效。
+- `frontend/src/features/chat/hooks/useConversationDetail.ts`：选中会话详情查询。
+- `frontend/src/features/chat/components/ConversationHistoryDrawer.tsx`：创建状态、选中样式和选择回调。
+- `frontend/src/pages/AiManagerPage.tsx`：组合页面本地状态与会话 API 行为。
+
+### 接口或数据变化
+
+无新增后端接口或数据库迁移。前端开始调用既有 `POST /api/conversations` 与 `GET /api/conversations/{conversationId}`。
+
+### 验证情况
+
+- 通过：`pnpm exec tsc --noEmit`。
+- 通过：`pnpm build`。
+- 通过：`backend/.venv/Scripts/python.exe -m unittest tests.test_agents_conversations_integration -v`，5 项通过。
+
+### 遗留问题
+
+- 已读取的历史会话详情暂未渲染为消息列表；该展示与发送回显将作为下一步完成。
 
 ## 2026-07-23：认证刷新并发保护
 

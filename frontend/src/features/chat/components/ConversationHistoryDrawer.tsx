@@ -5,12 +5,15 @@ import type { Conversation } from '../../../types/chat'
 type Props = {
   conversations: Conversation[]
   loading: boolean
+  creating: boolean
   open: boolean
+  selectedConversationId: string | null
   onClose: () => void
   onNewConversation: () => void
+  onSelectConversation: (conversationId: string) => void
 }
 
-export function ConversationHistoryDrawer({ conversations, loading, open, onClose, onNewConversation }: Props) {
+export function ConversationHistoryDrawer({ conversations, loading, creating, open, selectedConversationId, onClose, onNewConversation, onSelectConversation }: Props) {
   const hasConversations = conversations.length > 0
 
   return (
@@ -29,14 +32,14 @@ export function ConversationHistoryDrawer({ conversations, loading, open, onClos
       width={260}
       onClose={onClose}
     >
-      <Button className="!mb-8 !h-10 !border-0 !bg-slate-100 !text-[15px] !font-medium !text-slate-700 hover:!bg-slate-200" block icon={<PlusOutlined />} onClick={onNewConversation}>
+      <Button className="!mb-8 !h-10 !border-0 !bg-slate-100 !text-[15px] !font-medium !text-slate-700 hover:!bg-slate-200" block icon={<PlusOutlined />} loading={creating} onClick={onNewConversation}>
         新建会话
       </Button>
       {loading ? <Skeleton active paragraph={{ rows: 4 }} /> : (
         <div>
           {hasConversations && <p className="mb-5 text-sm text-slate-400">最近一周</p>}
           {conversations.map(conversation => (
-            <button key={conversation.id} className="mb-2 flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-[15px] text-slate-700 hover:bg-slate-100" type="button">
+            <button key={conversation.id} className={`mb-2 flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-[15px] ${selectedConversationId === conversation.id ? 'bg-indigo-50 text-indigo-600' : 'text-slate-700 hover:bg-slate-100'}`} type="button" onClick={() => onSelectConversation(conversation.id)}>
               <MessageOutlined className="shrink-0 text-slate-400" />
               <Typography.Text className="!text-[15px]" ellipsis>{conversation.title ?? '新会话'}</Typography.Text>
             </button>

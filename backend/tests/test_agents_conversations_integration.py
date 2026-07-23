@@ -124,6 +124,62 @@ class AgentsAndConversationsIntegrationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual([item["id"] for item in response.json()["items"]], [first_conversation.json()["id"]])
 
+    def test_only_one_empty_conversation_is_created_per_agent(self) -> None:
+        headers = self.create_headers()
+
+        first = self.client.post("/api/conversations", headers=headers, json={"agentId": BUILTIN_AGENT_ID})
+        duplicate = self.client.post("/api/conversations", headers=headers, json={"agentId": BUILTIN_AGENT_ID})
+        self.client.post(f"/api/conversations/{first.json()['id']}/messages", headers=headers, json={"content": "开始对话"})
+        next_conversation = self.client.post("/api/conversations", headers=headers, json={"agentId": BUILTIN_AGENT_ID})
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(duplicate.status_code, 200)
+        self.assertEqual(duplicate.json()["id"], first.json()["id"])
+        self.assertEqual(next_conversation.status_code, 201)
+        self.assertNotEqual(next_conversation.json()["id"], first.json()["id"])
+
+    def test_first_message_creates_conversation_without_a_draft_record(self) -> None:
+        headers = self.create_headers()
+
+        before = self.client.get(f"/api/conversations?agentId={BUILTIN_AGENT_ID}", headers=headers)
+        response = self.client.post(
+            "/api/conversations/messages",
+            headers=headers,
+            json={"agentId": BUILTIN_AGENT_ID, "content": "延迟创建的第一条消息"},
+        )
+        detail = self.client.get(f"/api/conversations/{response.json()['conversation']['id']}", headers=headers)
+
+        self.assertEqual(before.status_code, 200)
+        self.assertEqual(before.json()["items"], [])
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["conversation"]["title"], "延迟创建的第一条消息")
+        self.assertEqual([message["role"] for message in detail.json()["messages"]], ["user", "assistant"])
+
+    def test_delayed_send_rejects_conversation_from_another_agent(self) -> None:
+        headers = self.create_headers()
+        other_agent = self.create_agent(headers, "另一智能体")
+        started = self.client.post(
+            "/api/conversations/messages",
+            headers=headers,
+            json={"agentId": BUILTIN_AGENT_ID, "content": "内置智能体消息"},
+        )
+        rejected = self.client.post(
+            "/api/conversations/messages",
+            headers=headers,
+            json={
+                "agentId": other_agent["id"],
+                "conversationId": started.json()["conversation"]["id"],
+                "content": "不应写入",
+            },
+        )
+        detail = self.client.get(f"/api/conversations/{started.json()['conversation']['id']}", headers=headers)
+
+        self.assertEqual(started.status_code, 201)
+        self.assertEqual(rejected.status_code, 404)
+        self.assertEqual([message["content"] for message in detail.json()["messages"]], [
+            "内置智能体消息", "已收到你的消息：内置智能体消息",
+        ])
+
     def test_echo_message_persists_both_roles_and_updates_conversation(self) -> None:
         headers = self.create_headers()
         conversation = self.client.post(

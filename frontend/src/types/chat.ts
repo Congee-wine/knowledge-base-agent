@@ -18,3 +18,22 @@ export type Conversation = {
   createdAt: string
   updatedAt: string
 }
+
+export type ChatMessage = {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  generationStatus: 'complete' | 'interrupted' | 'failed'
+  createdAt: string
+}
+
+export type ConversationDetail = Conversation & {
+  agent: ChatAgent
+  messages: ChatMessage[]
+}
+
+export type SendMessageResult = {
+  conversation: Conversation
+  userMessage: ChatMessage
+  assistantMessage: ChatMessage
+}

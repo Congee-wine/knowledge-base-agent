@@ -11,9 +11,10 @@ from services.agents import get_agent
 from services.errors import not_found
 
 
-def create_conversation(user_id: str, agent_id: str, title: str | None) -> ConversationResponse:
+def create_conversation(user_id: str, agent_id: str, title: str | None) -> tuple[ConversationResponse, bool]:
     _ensure_active_agent(user_id, agent_id)
-    return _conversation_response(conversation_repository.create_conversation(user_id, agent_id, title))
+    conversation, created = conversation_repository.create_conversation(user_id, agent_id, title)
+    return _conversation_response(conversation), created
 
 
 def list_conversations(user_id: str, agent_id: str, limit: int) -> list[ConversationResponse]:
@@ -32,6 +33,24 @@ def get_conversation(user_id: str, conversation_id: str) -> ConversationDetailRe
 
 def append_echo_messages(user_id: str, conversation_id: str, content: str) -> EchoMessageResponse:
     result = conversation_repository.append_echo_messages(user_id, conversation_id, content)
+    if result is None:
+        raise not_found()
+    conversation, user_message, assistant_message = result
+    return EchoMessageResponse(
+        conversation=_conversation_response(conversation),
+        user_message=_message_response(user_message),
+        assistant_message=_message_response(assistant_message),
+    )
+
+
+def send_echo_message(
+    user_id: str, agent_id: str, conversation_id: str | None, content: str
+) -> EchoMessageResponse:
+    if conversation_id is None:
+        _ensure_active_agent(user_id, agent_id)
+        result = conversation_repository.start_conversation_and_append_echo_messages(user_id, agent_id, content)
+    else:
+        result = conversation_repository.append_echo_messages(user_id, conversation_id, content, agent_id)
     if result is None:
         raise not_found()
     conversation, user_message, assistant_message = result
