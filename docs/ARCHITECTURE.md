@@ -31,9 +31,9 @@
 
 ### 后端：`backend/`
 
-- `main.py`：FastAPI 应用、开发环境 CORS、健康检查与路由注册；启动时不修改数据库结构。
-- `config.py`：从 `.env` 读取数据库地址和认证配置；`DATABASE_URL` 为必需配置。
-- `database.py`：psycopg PostgreSQL 连接；业务代码不在此处创建或修改表。
+- `main.py`：FastAPI 应用、开发环境 CORS、健康检查与路由注册；通过生命周期初始化和关闭 PostgreSQL 连接池，启动时不修改数据库结构。
+- `config.py`：从 `.env` 读取数据库地址、连接池大小和认证配置；`DATABASE_URL` 为必需配置。
+- `database.py`：psycopg PostgreSQL 连接池；业务 Repository 通过 `get_connection()` 借用并归还连接，不在此处创建或修改表。
 - `migrations/`：Alembic 版本化数据库迁移；当前包含认证基线和 pgvector 扩展启用。
 - `integrations/object_storage.py`：MinIO/S3 兼容私有对象存储客户端适配。
 - `workers/queue.py`：Redis/RQ 文档处理队列适配。
@@ -50,6 +50,8 @@
 - `tests/test_auth_integration.py`：认证 API 到 PostgreSQL 的集成测试；使用唯一测试用户并在每个用例结束后清理测试数据。
 
 ## 数据库与存储
+
+Web API 使用 `psycopg_pool.ConnectionPool` 复用 PostgreSQL 连接，默认最小 1、最大 10 条连接，可通过 `DATABASE_POOL_MIN_SIZE`、`DATABASE_POOL_MAX_SIZE` 调整。应用启动时预建最小连接数，关闭时释放；Alembic 迁移保持独立的 `NullPool` 短连接，不共享运行时连接池。
 
 当前可由代码确认的 PostgreSQL 对象：
 

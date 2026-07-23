@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Alert, Button, Result, Spin, message } from 'antd'
 import { HistoryOutlined, PlusCircleOutlined } from '@ant-design/icons'
 import { ChatComposer } from '../features/chat/components/ChatComposer'
+import { ChatHistorySkeleton } from '../features/chat/components/ChatHistorySkeleton'
 import { ChatMessageList } from '../features/chat/components/ChatMessageList'
 import { ChatWelcome } from '../features/chat/components/ChatWelcome'
 import { ConversationHistoryDrawer } from '../features/chat/components/ConversationHistoryDrawer'
@@ -68,7 +69,9 @@ export function AiManagerPage() {
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         {selectedConversationId === null && optimisticMessages.length === 0
           ? <ChatWelcome agent={agent} onPromptClick={setComposerValue} />
-          : <ChatMessageList messages={[...(conversationDetailQuery.data?.messages ?? []), ...optimisticMessages]} pendingAssistant={sendMessageMutation.isPending} />}
+          : conversationDetailQuery.isPending && optimisticMessages.length === 0
+            ? <ChatHistorySkeleton />
+            : <ChatMessageList messages={[...(conversationDetailQuery.data?.messages ?? []), ...optimisticMessages]} pendingAssistant={sendMessageMutation.isPending} />}
         <ChatComposer agent={agent} sending={sendMessageMutation.isPending} value={composerValue} onChange={setComposerValue} onSubmit={sendMessage} />
       </div>
       <ConversationHistoryDrawer conversations={conversationsQuery.data?.items ?? []} creating={false} loading={conversationsQuery.isPending} open={historyOpen} selectedConversationId={selectedConversationId} onClose={() => setHistoryOpen(false)} onNewConversation={createNewConversation} onSelectConversation={conversationId => {

@@ -20,7 +20,24 @@ def boolean_setting(name: str, default: bool) -> bool:
     return value.lower() in {"1", "true", "yes", "on"}
 
 
+def positive_int_setting(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        parsed_value = int(value)
+    except ValueError as error:
+        raise RuntimeError(f"{name} must be a positive integer.") from error
+    if parsed_value < 1:
+        raise RuntimeError(f"{name} must be a positive integer.")
+    return parsed_value
+
+
 DATABASE_URL = required_setting("DATABASE_URL")
+DATABASE_POOL_MIN_SIZE = positive_int_setting("DATABASE_POOL_MIN_SIZE", 1)
+DATABASE_POOL_MAX_SIZE = positive_int_setting("DATABASE_POOL_MAX_SIZE", 10)
+if DATABASE_POOL_MAX_SIZE < DATABASE_POOL_MIN_SIZE:
+    raise RuntimeError("DATABASE_POOL_MAX_SIZE must be greater than or equal to DATABASE_POOL_MIN_SIZE.")
 
 SECRET_KEY = required_setting("AUTH_SECRET_KEY")
 ALGORITHM = "HS256"

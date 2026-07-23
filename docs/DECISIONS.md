@@ -1,5 +1,36 @@
 # 技术决策记录
 
+## ADR-009：Web API 使用 Psycopg 连接池复用 PostgreSQL 连接
+
+- **日期**：2026-07-23
+- **状态**：已采用
+
+### 背景
+
+受保护 API 的认证与业务 Repository 都通过 `psycopg.connect()` 创建新连接。实测单次建连约 491–719ms，一个请求的多次连接导致用户感知到明显等待。
+
+### 可选方案
+
+1. 保持每次 Repository 调用新建连接。
+2. 在 FastAPI 进程内使用 `psycopg_pool.ConnectionPool`，Repository 继续通过统一入口借还连接。
+3. 将所有 Repository 改为 SQLAlchemy ORM 与 Session 池。
+
+### 最终决定
+
+采用方案 2。新增 `psycopg_pool`，在 FastAPI 生命周期创建最小 1、最大 10 条连接的共享池；`get_connection()` 保持上下文管理器接口。Alembic 继续使用独立 `NullPool`。
+
+### 选择理由
+
+方案直接消除反复建连成本，且不改变现有 Repository/Service 分层和 SQL 写法。相比为连接池目的引入 ORM，改动范围更小、业务风险更低。
+
+### 影响与代价
+
+需要维护池大小配置和应用生命周期；多进程部署时每个 API 进程都会拥有自己的连接池，必须使总连接数不超过 PostgreSQL 限额。连接池不会减少 SQL 查询次数或数据库本身的延迟。
+
+### 后续条件
+
+部署增加 API Worker 数量或出现池等待时，依据 PostgreSQL `max_connections`、实际并发和监控数据重新设置池上限；再评估合并重复查询和索引优化。
+
 ## ADR-008：前端统一升级至 Ant Design 6 与 Ant Design X 2
 
 - **日期**：2026-07-23

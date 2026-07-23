@@ -1,14 +1,25 @@
 import uuid
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from routers import agents, auth, chat, conversations
+from database import close_connection_pool, initialize_connection_pool
 from services.errors import DomainError
 
 
-app = FastAPI(title="软小助 AI 管家 API")
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    initialize_connection_pool()
+    try:
+        yield
+    finally:
+        close_connection_pool()
+
+
+app = FastAPI(title="软小助 AI 管家 API", lifespan=lifespan)
 
 
 @app.exception_handler(DomainError)

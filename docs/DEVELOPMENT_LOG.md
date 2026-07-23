@@ -1,5 +1,44 @@
 # 开发日志
 
+## 2026-07-23：PostgreSQL 连接池优化
+
+### 任务目标
+
+定位并消除受保护 API 每次请求反复建立 PostgreSQL 连接造成的明显等待。
+
+### 实现内容
+
+- 新增 `psycopg_pool`，在 FastAPI 生命周期启动时创建共享连接池、关闭时释放。
+- 保持 Repository 既有 `with get_connection()` 调用形态：现在它借用并归还池中连接，不再执行新的 TCP/数据库认证连接。
+- 新增 `DATABASE_POOL_MIN_SIZE`、`DATABASE_POOL_MAX_SIZE` 配置，默认分别为 1、10，并校验最大值不小于最小值。
+- 保留面向独立脚本和测试的延迟初始化兜底；Alembic 不接入 Web API 连接池。
+
+### 主要文件
+
+- `backend/database.py`：共享连接池生命周期和连接借还上下文。
+- `backend/main.py`：FastAPI `lifespan` 初始化/关闭连接池。
+- `backend/config.py`、`backend/.env.example`：连接池配置与校验。
+- `backend/requirements.txt`：新增 `psycopg_pool` 依赖。
+
+### 技术方案
+
+数据库连接是昂贵资源，应在进程生命周期内复用而不是按 Repository 调用新建。池大小采用本地开发保守默认值，避免单进程占用过多 PostgreSQL 连接；迁移是短时管理任务，继续使用 Alembic 自己的 `NullPool`。
+
+### 接口或数据变化
+
+- 无 HTTP 接口、请求响应或数据库 schema 变化，无需 Alembic 迁移。
+- 新增环境变量 `DATABASE_POOL_MIN_SIZE`、`DATABASE_POOL_MAX_SIZE`。
+
+### 验证情况
+
+- 直接测量：反复新建 PostgreSQL 连接平均约 605ms；连接池借还约 0.02ms；同一已连接会话的简单查询约 70–230ms。
+- 通过：Python 静态编译。
+- 通过：认证与智能体/会话真实 PostgreSQL 集成测试共 13 项，耗时约 73 秒。
+
+### 遗留问题
+
+- 连接池不减少 SQL 查询本身的往返或重复查询。若仍需优化，应先记录每个接口的 SQL 数量和耗时，再处理查询合并、索引或 PostgreSQL/容器网络延迟。
+
 ## 2026-07-23：聊天会话延迟创建与消息回显联调
 
 ### 任务目标
@@ -14,6 +53,7 @@
 - 发送接口同时校验会话归属和请求中的智能体 ID，防止将其他智能体会话作为当前智能体继续写入。
 - 发送采用乐观更新：立即展示用户消息和 Ant Design X 加载气泡；服务端响应后替换为真实消息，失败时恢复输入内容。
 - 发送成功后直接更新 React Query 会话详情缓存，只后台刷新会话列表；避免首次发送或旧会话续聊时额外读取完整会话历史。
+- 打开未缓存的历史会话时展示左右交错的消息骨架屏；首次发送与继续发送仍优先展示即时消息和加载气泡，不误显示历史加载状态。
 
 ### 主要文件
 
