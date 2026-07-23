@@ -3,6 +3,7 @@ import type { TokenResponse, User } from '../types/auth'
 const ACCESS_TOKEN_KEY = 'access_token'
 const REFRESH_TOKEN_KEY = 'refresh_token'
 const CURRENT_USER_KEY = 'current_user'
+let refreshRequest: Promise<User> | null = null
 
 export function getTokenExpiresAt(token: string) {
   try {
@@ -32,9 +33,37 @@ export function clearStoredSession() {
 export async function refreshSession(): Promise<User> {
   const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY)
   if (!refreshToken) throw new Error('登录已过期')
-  const data = await refreshTokens(refreshToken)
-  saveTokens(data)
-  return data.user
+  if (refreshRequest) return refreshRequest
+
+  refreshRequest = refreshWithToken(refreshToken).finally(() => {
+    refreshRequest = null
+  })
+  return refreshRequest
+}
+
+async function refreshWithToken(refreshToken: string): Promise<User> {
+  try {
+    const data = await refreshTokens(refreshToken)
+    saveTokens(data)
+    return data.user
+  } catch (error) {
+    const latestRefreshToken = localStorage.getItem(REFRESH_TOKEN_KEY)
+    const storedUser = getStoredUser()
+    if (latestRefreshToken && latestRefreshToken !== refreshToken && storedUser) return storedUser
+    throw error
+  }
+}
+
+function getStoredUser(): User | null {
+  const rawUser = localStorage.getItem(CURRENT_USER_KEY)
+  if (!rawUser) return null
+  try {
+    const user: unknown = JSON.parse(rawUser)
+    if (typeof user === 'object' && user !== null && 'id' in user && 'email' in user && typeof user.id === 'string' && typeof user.email === 'string') return user as User
+  } catch {
+    return null
+  }
+  return null
 }
 
 export async function logout() {

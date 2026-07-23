@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from schemas.agents import AgentResponse
 
@@ -32,6 +32,24 @@ class MessageResponse(BaseModel):
     content: str
     generation_status: Literal["complete", "interrupted", "failed"] = Field(serialization_alias="generationStatus")
     created_at: datetime = Field(serialization_alias="createdAt")
+
+
+class CreateMessageRequest(BaseModel):
+    content: str = Field(min_length=1, max_length=4000)
+
+    @field_validator("content")
+    @classmethod
+    def content_must_not_be_blank(cls, content: str) -> str:
+        normalized_content = content.strip()
+        if not normalized_content:
+            raise ValueError("消息内容不能为空")
+        return normalized_content
+
+
+class EchoMessageResponse(BaseModel):
+    conversation: ConversationResponse
+    user_message: MessageResponse = Field(serialization_alias="userMessage")
+    assistant_message: MessageResponse = Field(serialization_alias="assistantMessage")
 
 
 class ConversationDetailResponse(ConversationResponse):

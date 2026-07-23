@@ -6,7 +6,7 @@ from typing import Any
 from repositories import agents as agent_repository
 from repositories import conversations as conversation_repository
 from schemas.agents import AgentResponse
-from schemas.conversations import ConversationDetailResponse, ConversationResponse, MessageResponse
+from schemas.conversations import ConversationDetailResponse, ConversationResponse, EchoMessageResponse, MessageResponse
 from services.agents import get_agent
 from services.errors import not_found
 
@@ -28,6 +28,18 @@ def get_conversation(user_id: str, conversation_id: str) -> ConversationDetailRe
     agent = get_agent(user_id, str(conversation["agent_id"]))
     messages = [_message_response(row) for row in conversation_repository.list_messages(str(conversation["id"]))]
     return ConversationDetailResponse(**_conversation_response(conversation).model_dump(), agent=agent, messages=messages)
+
+
+def append_echo_messages(user_id: str, conversation_id: str, content: str) -> EchoMessageResponse:
+    result = conversation_repository.append_echo_messages(user_id, conversation_id, content)
+    if result is None:
+        raise not_found()
+    conversation, user_message, assistant_message = result
+    return EchoMessageResponse(
+        conversation=_conversation_response(conversation),
+        user_message=_message_response(user_message),
+        assistant_message=_message_response(assistant_message),
+    )
 
 
 def _ensure_active_agent(user_id: str, agent_id: str) -> AgentResponse:

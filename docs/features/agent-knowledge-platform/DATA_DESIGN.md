@@ -33,7 +33,7 @@ users ──< agents ──< conversations ──< messages ──< message_cita
 
 ### DB-002：`agents`
 
-字段：`id`、`owner_user_id`（内置智能体为空）、`kind`（`builtin`/`personal`）、`name`、`description`、`avatar_key`、`system_prompt`、`welcome_message`、`allow_conversation_upload`、`deleted_at`、`created_at`、`updated_at`。唯一约束：个人活跃智能体 `(owner_user_id, lower(name))`；内置智能体由固定种子 ID 维护。软删除只写入 `deleted_at`，不删除关联会话、消息或引用。
+字段：`id`、`owner_user_id`（内置智能体为空）、`kind`（`builtin`/`personal`）、`name`、`description`、`avatar_key`、`system_prompt`、`welcome_message`、`allow_conversation_upload`、`allow_network_access`、`deleted_at`、`created_at`、`updated_at`。唯一约束：个人活跃智能体 `(owner_user_id, lower(name))`；内置智能体由固定种子 ID 维护。软删除只写入 `deleted_at`，不删除关联会话、消息或引用。`allow_network_access` 决定个人智能体是否显示联网入口，实际联网能力另行实现。
 
 ### DB-003：`agent_preset_questions`
 

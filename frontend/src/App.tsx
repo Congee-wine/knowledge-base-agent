@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AppLayout } from './layouts/AppLayout'
 import { getCurrentUser } from './api/auth'
+import { ApiError } from './api/http'
 import { clearStoredSession, getTokenExpiresAt, getStoredAccessToken, refreshSession } from './lib/auth'
 import { AuthPage } from './pages/AuthPage'
 import { AiManagerPage } from './pages/AiManagerPage'
@@ -26,8 +27,9 @@ function App() {
     queryFn: async () => {
       try {
         return await getCurrentUser(accessToken!)
-      } catch {
-        return refreshSession()
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401) return refreshSession()
+        throw error
       }
     },
     enabled: Boolean(accessToken),

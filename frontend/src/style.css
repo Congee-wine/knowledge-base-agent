@@ -1,3 +1,61 @@
 @import "tailwindcss";
 
 html, body, #root { min-height: 100%; margin: 0; }
+
+.prototype-chat-sender {
+  border: 1px solid #e5e7eb !important;
+  border-radius: 18px !important;
+  box-shadow: none !important;
+}
+
+.prototype-chat-sender textarea {
+  min-height: 44px !important;
+}
+
+.prototype-chat-sender textarea:focus,
+.prototype-chat-sender textarea:focus-visible {
+  border-color: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.prototype-chat-actions .ant-flex {
+  align-items: center;
+  gap: 12px;
+}
+
+.ai-manager-welcome {
+  margin-bottom: 36px;
+}
+
+.ai-manager-prompts {
+  max-width: 520px;
+}
+
+.conversation-history-drawer .ant-drawer-content {
+  border-left: 1px solid #e5e7eb;
+  box-shadow: none;
+}
+
+.conversation-history-drawer .ant-drawer-content-wrapper {
+  box-shadow: none !important;
+}
+
+.ant-drawer-content-wrapper,
+.ant-drawer-content {
+  box-shadow: none !important;
+}
+
+.conversation-history-drawer.ant-drawer .ant-drawer-content-wrapper {
+  border-left: 1px solid #e5e7eb;
+}
+
+.conversation-history-drawer .ant-drawer-header {
+  min-height: 72px;
+  border-bottom: 0;
+  padding: 20px 16px 12px;
+}
+
+.conversation-history-drawer .ant-drawer-body {
+  padding: 0 12px 20px;
+}

@@ -100,6 +100,7 @@
 | `DELETE /api/agents/default` | 仅清空当前用户默认设置 | 已实现，集成测试通过 |
 | `GET/POST /api/conversations` | 按当前智能体列出/创建当前用户会话 | 已实现，用户与智能体隔离已测试 |
 | `GET /api/conversations/{conversationId}` | 获取当前用户单个会话及消息 | 已实现，用户隔离已测试 |
+| `POST /api/conversations/{conversationId}/messages` | 写入用户消息和阶段 2 回显助手消息 | 已实现，事务、顺序、空白校验和越权拒绝已测试 |
 
 ## 知识库与智能体工作流
 
@@ -111,7 +112,7 @@
 
 ## 外部依赖与验证
 
-- 前端主要依赖：React、React Router、React Query、Zustand、Ant Design、Vite、TypeScript 和 Tailwind CSS。
+- 前端主要依赖：React、React Router、React Query、Zustand、Ant Design 6、Ant Design X、Ant Design X Markdown、Vite、TypeScript 和 Tailwind CSS。
 - 后端主要依赖：FastAPI、PyJWT、pwdlib（Argon2）、psycopg、pgvector、python-dotenv、Alembic、SQLAlchemy（仅迁移执行）、MinIO SDK、Redis 和 RQ。
 - CI：GitHub Actions 对后端运行 Python 编译检查，对前端运行 `pnpm install --frozen-lockfile` 与 `pnpm build`。
 

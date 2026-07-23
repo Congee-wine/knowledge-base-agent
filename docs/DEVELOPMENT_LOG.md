@@ -1,5 +1,90 @@
 # 开发日志
 
+## 2026-07-23：AI 管家聊天页步骤 1 与组件库升级
+
+### 任务目标
+
+根据确认的 AI 管家原型实现欢迎态和历史记录的只读联调，并使用最新版 Ant Design X 构建聊天交互区域。
+
+### 实现内容
+
+- 将 Ant Design 升级至 6.5.1，新增 Ant Design X 2.8.0 与 Markdown 2.8.0；移除不兼容的 Pro Components，以原生 `Card` 保持认证页登录卡片。
+- 新增聊天领域类型、API 模块和 React Query Hook，调用 `GET /api/chat/entry` 与 `GET /api/conversations`。
+- 将空 `AiManagerPage` 拆分为欢迎区、输入区和历史记录抽屉；欢迎区使用 Ant Design X `Welcome`、`Prompts`，输入区使用 `Sender`。
+- 实现 AI 管家“全部资料”默认选中、历史记录默认收起、推荐问题预填输入框，以及未实现入口的明确提示；不展示新建文档卡片。
+
+### 主要文件
+
+- `frontend/src/api/chat.ts`、`frontend/src/types/chat.ts`：聊天 API 契约与领域类型。
+- `frontend/src/features/chat/`：聊天查询 Hook、欢迎区、输入区和历史记录抽屉组件。
+- `frontend/src/pages/AiManagerPage.tsx`：页面组合、加载/失败状态和历史抽屉开关。
+- `frontend/src/pages/AuthPage.tsx`：用 Ant Design 原生 `Card` 替代已移除的 ProCard。
+- `frontend/package.json`、`frontend/pnpm-lock.yaml`：统一组件库版本。
+
+### 技术方案
+
+页面只组合状态，查询 Hook 管理服务器数据，API 模块统一添加 Bearer 令牌，展示组件不直接发 HTTP 请求。步骤 1 不提前调用创建会话或发送消息接口，所有尚未实现的按钮均显示清晰提示；步骤 2 再接入写操作。
+
+### 接口或数据变化
+
+- 前端开始消费既有 `GET /api/chat/entry` 与 `GET /api/conversations`。
+- 未新增后端接口、数据库迁移或模型/RAG 调用。
+- 前端依赖升级并移除 `@ant-design/pro-components`。
+
+### 验证情况
+
+- 通过：`pnpm exec tsc --noEmit`。
+- 通过：提升权限后的 `pnpm build`，TypeScript 与 Vite 生产构建成功。
+- 风险：普通沙箱构建无法读取 Markdown 的语法高亮依赖，但提升权限构建成功；这属于本机文件访问限制，不是代码或依赖兼容错误。
+
+### 遗留问题
+
+- 尚未实现创建会话、选中会话、读取历史消息和发送回显消息，属于聊天页步骤 2。
+- 生产包超过 500 kB，后续通过路由级懒加载改善。
+
+## 2026-07-23：阶段 2 消息写入与回显闭环
+
+### 任务目标
+
+在不接入模型、RAG 或 SSE 的前提下，验证聊天消息的持久化、会话所有权、标题更新和顺序读取链路。
+
+### 实现内容
+
+- 新增 `POST /api/conversations/{conversationId}/messages`，接收 1–4000 字符的非空消息，去除首尾空白后处理。
+- 在同一 PostgreSQL 事务内验证会话归属和智能体活跃状态，写入 `user` 消息、明确标识为回显的 `assistant` 消息，并更新会话标题/时间。
+- 首次未命名会话使用用户首条消息前 50 字作为标题；助手回显的创建时间紧随用户消息，保证现有读取排序稳定呈现“用户在前、助手在后”。
+- 扩展集成测试，覆盖消息顺序、标题生成、空白输入拒绝和其他用户发送消息的越权拒绝。
+
+### 主要文件
+
+- `backend/schemas/conversations.py`：消息请求与回显响应模型、空白内容校验。
+- `backend/repositories/conversations.py`：事务内消息写入、标题/时间更新和活跃会话查询。
+- `backend/services/conversations.py`：消息用例编排和资源不存在映射。
+- `backend/routers/conversations.py`：受保护的消息回显 HTTP 接口。
+- `backend/tests/test_agents_conversations_integration.py`：消息持久化与越权集成测试。
+- `docs/features/agent-knowledge-platform/API_DESIGN.md`：新增 API-007A 的阶段边界说明。
+
+### 技术方案
+
+回显接口与未来 SSE 模型接口并存：前者只验证数据持久化，不承担模型调用；后者仍按既有 API-008 设计在模型/RAG 阶段实现。两条消息和会话更新时间放在一个事务中，避免局部成功。通过不同的微秒级创建时间维持消息逻辑顺序，不引入额外且没有业务含义的排序字段。
+
+### 接口或数据变化
+
+- 新增 `POST /api/conversations/{conversationId}/messages`，成功响应为更新后的会话、用户消息和回显助手消息。
+- 无数据库迁移；复用 `messages`、`conversations` 表。
+- 未新增依赖；未实现模型调用、检索、SSE 或取消生成。
+
+### 验证情况
+
+- 通过：Python 静态编译。
+- 通过：消息回显/顺序/空白校验与跨用户越权拒绝的真实 PostgreSQL 集成测试。
+- 通过：完整智能体/会话集成测试共 5 项，以及既有认证集成测试 5 项。
+
+### 遗留问题
+
+- 回显助手消息不是 AI 回答，不能用于模型功能验收。
+- 取消生成、流式 token、失败状态和引用持久化仍待阶段 4 的模型/RAG 工作流。
+
 ## 2026-07-23：阶段 2 智能体、默认打开与会话后端基础
 
 ### 任务目标
@@ -344,6 +429,72 @@ Ant Design X 仅承担 AI 交互展示，避免与业务接口、鉴权和状态
 ### 遗留问题
 
 - 实施前锁定 DeepSeek 具体聊天模型、BGE 推理库、后台任务框架和数据库迁移工具版本。
+
+## 2026-07-23：认证刷新并发保护
+
+### 任务目标
+
+修复刷新令牌请求返回 401 时可能错误清除有效登录状态的问题。
+
+### 实现内容
+
+- 同一浏览器标签页内的多个刷新触发共用同一个进行中的请求，避免 refresh token 轮换产生竞争。
+- 刷新失败时，如浏览器存储中的 refresh token 已被其他标签页更新，保留该更新后的会话而不是退出登录。
+- 仅当 `/api/auth/me` 明确返回 401 时才尝试刷新；网络失败和服务端错误不再被误判为登录失效。
+
+### 主要文件
+
+- `frontend/src/lib/auth.ts`：刷新请求单飞控制和跨标签页 token 更新识别。
+- `frontend/src/App.tsx`：限制自动刷新触发条件为认证 401。
+
+### 接口或数据变化
+
+无。继续使用既有 `POST /api/auth/refresh` 接口。
+
+### 验证情况
+
+- 通过：`pnpm exec tsc --noEmit`。
+- 待验证：使用两个浏览器标签页同时接近过期令牌的人工刷新场景。
+
+### 遗留问题
+
+- 服务端明确拒绝当前 refresh token（过期、已退出或密钥变更）时，前端仍会安全退出，用户需要重新登录。
+
+## 2026-07-23：AI 管家欢迎页视觉重做
+
+### 任务目标
+
+将此前功能导向的聊天欢迎页调整为与用户确认原型一致的页面结构，不改变既定的接口边界和按钮能力范围。
+
+### 实现内容
+
+- 重写 `AppLayout` 的侧栏视觉结构，保留真实导航和当前登录账户信息。
+- 移除 AI 管家页的大型圆角容器和标题栏，改为纯白聊天画布与右上角文字操作。
+- 将欢迎区调整为左对齐问候语和纵向编号预设问题；移除用户明确排除的“新建一个文档”卡片。
+- 使用 Ant Design X `Sender` 保留可复用的 AI 输入能力，并将其调整为原型中的紧凑底部输入区。
+
+### 主要文件
+
+- `frontend/src/layouts/AppLayout.tsx`：应用级侧栏与账户区域布局。
+- `frontend/src/pages/AiManagerPage.tsx`：聊天欢迎页的区域组合和历史抽屉状态。
+- `frontend/src/features/chat/components/ChatWelcome.tsx`：问候语与纵向预设问题展示。
+- `frontend/src/features/chat/components/ChatComposer.tsx`：输入区和已确认的能力入口展示规则。
+- `frontend/src/style.css`：Ant Design X 输入组件的局部原型样式覆盖。
+
+### 接口或数据变化
+
+无。本次仅调整前端视觉和组件布局，既有聊天入口、会话列表接口保持不变。
+
+### 验证情况
+
+- 通过：`pnpm exec tsc --noEmit`。
+- 通过：`pnpm build`（在允许读取依赖文件的环境中执行）。
+- 警告：生产包仍超过 Vite 默认 500 kB 阈值；尚未进行浏览器像素级截图比对。
+
+### 遗留问题
+
+- 侧栏个人智能体列表待对应列表接口和创建功能完成后使用真实数据渲染。
+- 新建会话、发送回显消息与历史消息展示仍待下一步前端接口联调。
 
 ## 2026-07-20：首期知识库资料类型调整
 

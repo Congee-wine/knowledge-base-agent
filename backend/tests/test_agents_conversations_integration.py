@@ -99,11 +99,17 @@ class AgentsAndConversationsIntegrationTests(unittest.TestCase):
         other_agent = self.client.get(f"/api/agents/{owner_agent['id']}", headers=other_headers)
         other_conversation = self.client.get(f"/api/conversations/{owner_conversation.json()['id']}", headers=other_headers)
         other_create = self.client.post("/api/conversations", headers=other_headers, json={"agentId": owner_agent["id"]})
+        other_message = self.client.post(
+            f"/api/conversations/{owner_conversation.json()['id']}/messages",
+            headers=other_headers,
+            json={"content": "越权消息"},
+        )
 
         self.assertEqual(owner_conversation.status_code, 201)
         self.assertEqual(other_agent.status_code, 404)
         self.assertEqual(other_conversation.status_code, 404)
         self.assertEqual(other_create.status_code, 404)
+        self.assertEqual(other_message.status_code, 404)
 
     def test_conversation_list_only_returns_current_agent_records(self) -> None:
         headers = self.create_headers()
@@ -117,6 +123,36 @@ class AgentsAndConversationsIntegrationTests(unittest.TestCase):
         self.assertEqual(first_conversation.status_code, 201)
         self.assertEqual(response.status_code, 200)
         self.assertEqual([item["id"] for item in response.json()["items"]], [first_conversation.json()["id"]])
+
+    def test_echo_message_persists_both_roles_and_updates_conversation(self) -> None:
+        headers = self.create_headers()
+        conversation = self.client.post(
+            "/api/conversations",
+            headers=headers,
+            json={"agentId": BUILTIN_AGENT_ID},
+        ).json()
+
+        response = self.client.post(
+            f"/api/conversations/{conversation['id']}/messages",
+            headers=headers,
+            json={"content": "  请介绍报价政策  "},
+        )
+        detail = self.client.get(f"/api/conversations/{conversation['id']}", headers=headers)
+        blank_message = self.client.post(
+            f"/api/conversations/{conversation['id']}/messages",
+            headers=headers,
+            json={"content": "   "},
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["conversation"]["title"], "请介绍报价政策")
+        self.assertEqual(response.json()["userMessage"]["role"], "user")
+        self.assertEqual(response.json()["userMessage"]["content"], "请介绍报价政策")
+        self.assertEqual(response.json()["assistantMessage"]["role"], "assistant")
+        self.assertEqual(response.json()["assistantMessage"]["content"], "已收到你的消息：请介绍报价政策")
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual([message["role"] for message in detail.json()["messages"]], ["user", "assistant"])
+        self.assertEqual(blank_message.status_code, 422)
 
 
 if __name__ == "__main__":

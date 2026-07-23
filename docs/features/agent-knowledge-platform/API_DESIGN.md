@@ -22,6 +22,7 @@
 | API-005A | DELETE | `/agents/default` | 清空默认打开设置 | FR-001、FR-002 |
 | API-006 | GET/POST | `/conversations` | 查询/创建会话 | FR-003 |
 | API-007 | GET | `/conversations/{conversationId}` | 获取会话与消息 | FR-003 |
+| API-007A | POST | `/conversations/{conversationId}/messages` | 写入用户消息并返回阶段 2 回显 | FR-003 |
 | API-008 | POST | `/conversations/{conversationId}/messages:stream` | 发送消息并接收 SSE | FR-003、FR-005 |
 | API-009 | GET/POST | `/knowledge/nodes` | 获取资料树/创建文件夹 | FR-004 |
 | API-010 | POST | `/knowledge/files` | 上传文件 | FR-004 |
@@ -51,6 +52,7 @@
   "welcomeMessage": "你好，有什么可以帮助你？",
   "presetQuestions": ["介绍产品优势"],
   "allowConversationUpload": true,
+  "allowNetworkAccess": false,
   "knowledgeScopes": [
     { "nodeId": "folder-uuid", "nodeType": "folder" },
     { "nodeId": "file-uuid", "nodeType": "file" }
@@ -60,6 +62,7 @@
 
 - `name`：1–80 字符；`description`：最多 500 字符；`systemPrompt`：最多 8000 字符。
 - 本阶段暂不接收 `knowledgeScopes`；待阶段 3 的 `knowledge_nodes` 与资料范围表完成后再开放该字段。
+- `allowNetworkAccess` 由创建/编辑个人智能体时保存，决定是否显示联网入口；实际联网调用后续单独实现。
 - 内置智能体的 PATCH/DELETE 返回 `AGENT_IMMUTABLE`。
 - 删除默认智能体返回 `DEFAULT_AGENT_MUST_BE_CLEARED`；删除成功仅写入软删除标记，响应 `204 No Content`。
 
@@ -83,9 +86,19 @@
 
 会话响应包含 `id`、`agent`、`title`、`updatedAt`、`messages`。会话列表请求必须传入当前智能体 ID；读取会话时，当前智能体与会话归属不匹配应返回资源不存在。
 
+## API-007A：阶段 2 消息回显
+
+- 请求：`{ "content": "请介绍报价政策" }`，内容去除首尾空白后必须为 1–4000 字符。
+- 服务端先验证会话归属当前用户且关联智能体仍处于活跃状态，再在同一数据库事务中写入一条 `user` 消息和一条 `assistant` 消息。
+- 助手消息固定返回“已收到你的消息：{内容}”，仅用于验证消息持久化、顺序和会话更新时间；不调用模型、不检索资料，也不表示 AI 能力已实现。
+- 若会话标题为空，首次用户消息的前 50 个字符作为标题；响应包含更新后的会话和两条已保存消息。
+- 会话不存在、无权访问或关联智能体已删除时返回 `RESOURCE_NOT_FOUND`。
+
 ## API-008：流式发送消息
 
-请求：`{ "content": "请介绍报价政策" }`。
+请求：`{ "content": "请介绍报价政策", "useKnowledgeBase": true }`。
+
+- `useKnowledgeBase` 仅适用于内置 AI 管家；首次进入时前端默认传 `true`，用户关闭“全部资料”后传 `false`。个人智能体的检索范围由其绑定资料决定，前端不显示该开关。
 
 响应类型为 `text/event-stream`，事件数据：
 

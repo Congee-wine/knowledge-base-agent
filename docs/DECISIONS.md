@@ -1,5 +1,35 @@
 # 技术决策记录
 
+## ADR-008：前端统一升级至 Ant Design 6 与 Ant Design X 2
+
+- **日期**：2026-07-23
+- **状态**：已采用
+
+### 背景
+
+用户要求聊天界面使用最新 Ant Design X。最新 `@ant-design/x` 2.8 要求 Ant Design 6，而项目原有 Ant Design 5.29 与 `@ant-design/pro-components` 2.8。
+
+### 可选方案
+
+1. 保持 Ant Design 5，降级使用 Ant Design X 1.x。
+2. 升级 Ant Design 及图标库至 6.x，使用 Ant Design X 2.x；移除不支持 Ant Design 6 的 Pro Components。
+
+### 最终决定
+
+采用方案 2。升级到 Ant Design 6.5.1、Ant Design X 2.8.0 和 Ant Design X Markdown 2.8.0；登录页唯一的 `ProCard` 使用替换为 Ant Design 原生 `Card`，移除 `@ant-design/pro-components`。
+
+### 选择理由
+
+满足使用最新 AI 组件库的明确要求，同时避免让一个只使用一次的 Pro Components 依赖阻塞整个组件栈升级。原生 `Card` 足以承担登录卡片职责，减少额外依赖。
+
+### 影响与代价
+
+这是前端主组件库升级，可能影响后续 Ant Design 组件样式或 API；本次已通过 TypeScript 和 Vite 生产构建。JavaScript 压缩包约 1 MB，后续需要通过路由懒加载降低首屏体积。
+
+### 后续条件
+
+新增或改造页面时继续运行 `pnpm build`；页面数量增长后实施路由级动态导入和代码分割。
+
 ## ADR-007：内置智能体使用固定 UUID，默认设置显式清空
 
 - **日期**：2026-07-23

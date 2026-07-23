@@ -9,6 +9,8 @@ from schemas.conversations import (
     ConversationListResponse,
     ConversationResponse,
     CreateConversationRequest,
+    CreateMessageRequest,
+    EchoMessageResponse,
 )
 from services import conversations as conversation_service
 
@@ -28,6 +30,15 @@ def read_conversations(
 @router.post("", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED)
 def create_conversation(data: CreateConversationRequest, current_user: Annotated[UserResponse, Depends(get_current_user)]) -> ConversationResponse:
     return conversation_service.create_conversation(current_user.id, data.agent_id, data.title)
+
+
+@router.post("/{conversation_id}/messages", response_model=EchoMessageResponse, status_code=status.HTTP_201_CREATED)
+def create_echo_message(
+    conversation_id: str,
+    data: CreateMessageRequest,
+    current_user: Annotated[UserResponse, Depends(get_current_user)],
+) -> EchoMessageResponse:
+    return conversation_service.append_echo_messages(current_user.id, conversation_id, data.content)
 
 
 @router.get("/{conversation_id}", response_model=ConversationDetailResponse)
