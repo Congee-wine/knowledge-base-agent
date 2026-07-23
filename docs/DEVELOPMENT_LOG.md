@@ -1,5 +1,87 @@
 # 开发日志
 
+## 2026-07-23：阶段 2 智能体、默认打开与会话后端基础
+
+### 任务目标
+
+实现不依赖模型或知识库的智能体和会话持久化基础，使默认打开、资源所有权、软删除和会话侧栏范围可被后端独立验证。
+
+### 实现内容
+
+- 新增 Alembic 迁移 `20260723_0002`，创建 `agents`、`user_preferences`、`agent_preset_questions`、`conversations` 和 `messages`，并写入固定 UUID 的内置 AI 管家种子记录。
+- 新增 Repository、Service、Schema 和 Router 分层，实现个人智能体 CRUD、软删除、默认设置与清空、聊天入口解析、会话创建/读取/按智能体列表查询。
+- 所有自有资源查询强制带当前认证用户 ID；内置智能体使用 `kind=builtin`，后端拒绝编辑/删除；删除默认个人智能体前必须先清空默认设置。
+- 资料范围字段和 `agent_knowledge_scopes` 未在本阶段实现，等待阶段 3 创建 `knowledge_nodes`。
+
+### 主要文件
+
+- `backend/migrations/versions/20260723_0002_agents_conversations.py`：阶段 2 业务表、约束、索引和内置种子迁移。
+- `backend/repositories/agents.py`、`backend/repositories/conversations.py`：集中 PostgreSQL 访问与所有权过滤。
+- `backend/services/agents.py`、`backend/services/conversations.py`、`backend/services/errors.py`：业务规则和统一领域错误。
+- `backend/routers/agents.py`、`backend/routers/conversations.py`：受保护 API 入口。
+- `backend/tests/test_agents_conversations_integration.py`：真实 PostgreSQL 的默认回退、不可变、软删除、用户隔离和会话范围测试。
+- `docs/features/agent-knowledge-platform/`、`docs/PROJECT_STATUS.md`、`docs/ARCHITECTURE.md`、`docs/DECISIONS.md`、`docs/QUESTIONS.md`：同步确认的接口、数据模型、决策和进度。
+
+### 技术方案
+
+使用固定 UUID 而非字符串哨兵表示内置 AI 管家，使所有智能体 ID 都可作为 UUID 外键使用；以 `kind` 区分内置和个人类型，但不把权限交给前端。将清空默认设置设计为独立接口，避免“删除智能体”同时隐式更改用户偏好。路由层只绑定 HTTP 和认证，服务层处理业务规则，仓储层集中 SQL，便于隔离测试和后续扩展消息生成流程。
+
+### 接口或数据变化
+
+- 新增 `GET /api/chat/entry`、`GET/POST/PATCH/DELETE /api/agents`、`PUT /api/agents/{agentId}/default`、`DELETE /api/agents/default`、`GET/POST /api/conversations`、`GET /api/conversations/{conversationId}`。
+- 新增阶段 2 数据库迁移，已在本地 PostgreSQL 执行 `alembic upgrade head`，当前版本为 `20260723_0002`。
+- 未新增依赖；未实现消息发送、SSE、模型、RAG 或知识库资料范围。
+
+### 验证情况
+
+- 通过：`python -m compileall -q main.py routers schemas services repositories migrations tests`。
+- 通过：`alembic upgrade head` 和 `alembic current`，当前版本 `20260723_0002 (head)`。
+- 通过：4 个智能体/会话真实 PostgreSQL 集成测试，覆盖内置默认、内置不可删除、更新、默认清空、软删除、用户隔离和按智能体会话过滤。
+- 通过：既有 5 个认证集成测试全部通过。
+- 通过：`git diff --check`。
+- 警告：测试仍输出既有 `TestClient/httpx` 弃用提示；本次未升级依赖。
+
+### 遗留问题
+
+- 会话列表暂未提供 cursor 翻页，阶段 2 前端联调前需要补齐。
+- 消息写入/回显、SSE 与前端页面仍未实现；知识库资料范围需等待阶段 3。
+
+## 2026-07-22：认证服务自动化集成测试
+
+### 任务目标
+
+将已完成的认证手工验证固化为可重复执行的测试，覆盖令牌轮换、撤销和会话过期等核心安全行为，为阶段 2 的受保护业务接口提供回归安全网。
+
+### 实现内容
+
+- 新增 `backend/tests/test_auth_integration.py`，使用 Python 标准库 `unittest` 与 FastAPI `TestClient` 执行真实 PostgreSQL 集成测试。
+- 覆盖重复注册拒绝、错误密码拒绝、刷新令牌轮换与旧令牌重放拒绝、登出后的访问/刷新令牌失效，以及过期会话拒绝。
+- 每个用例生成唯一测试邮箱，并在结束后删除该测试用户的会话、用户记录和撤销令牌，避免污染开发数据库。
+
+### 主要文件
+
+- `backend/tests/test_auth_integration.py`：认证路由、服务、JWT 与 PostgreSQL 的集成测试。
+- `backend/tests/__init__.py`：测试包标记，支持模块化执行。
+- `docs/PROJECT_STATUS.md`、`docs/ARCHITECTURE.md`：同步认证验证状态和测试模块职责。
+
+### 技术方案
+
+使用 `unittest` 避免为当前有限的测试集引入额外依赖。测试不模拟数据库连接，因为令牌轮换、会话撤销和过期判断都依赖真实 PostgreSQL 状态；通过唯一标识和精确清理实现与本地开发数据隔离。
+
+### 接口或数据变化
+
+无新增 HTTP API、业务表或依赖。测试运行期间临时写入并清理认证相关记录。
+
+### 验证情况
+
+- 通过：`python -m unittest tests.test_auth_integration -v`，5 个测试全部通过。
+- 通过：测试后确认无残留 `auth-test-*` 用户。
+- 警告：FastAPI 依赖中的 `TestClient` 输出上游弃用提示；本次未升级依赖，测试结果不受影响。
+
+### 遗留问题
+
+- 当前测试使用本地开发 PostgreSQL；后续 CI 应配置隔离测试数据库，避免共享环境并发执行。
+
 ## 2026-07-22：Linux 标准 RQ Worker 构建与执行验证
 
 ### 任务目标

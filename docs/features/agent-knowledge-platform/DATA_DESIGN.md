@@ -35,11 +35,10 @@ users ──< agents ──< conversations ──< messages ──< message_cita
 
 字段：`id`、`owner_user_id`（内置智能体为空）、`kind`（`builtin`/`personal`）、`name`、`description`、`avatar_key`、`system_prompt`、`welcome_message`、`allow_conversation_upload`、`deleted_at`、`created_at`、`updated_at`。唯一约束：个人活跃智能体 `(owner_user_id, lower(name))`；内置智能体由固定种子 ID 维护。软删除只写入 `deleted_at`，不删除关联会话、消息或引用。
 
-### DB-003：`agent_preset_questions` 与 `agent_knowledge_scopes`
+### DB-003：`agent_preset_questions`
 
 - 预设问题：`id`、`agent_id`、`content`、`display_order`。
-- 资料范围：`agent_id`、`knowledge_node_id`、`created_at`，联合主键 `(agent_id, knowledge_node_id)`。
-- 资料范围仅保存被显式选中的文件/文件夹节点；不复制后代文件。检索时递归展开文件夹，天然覆盖未来新增后代。
+- 本阶段只创建预设问题表。`agent_knowledge_scopes` 依赖尚未创建的 `knowledge_nodes`，延后到阶段 3 与知识库数据表一并创建。
 
 ### DB-004：`conversations`、`messages`、`message_citations`
 

@@ -47,6 +47,7 @@
 - `routers/chat.py`：认证保护的聊天路由；尚未连接模型或检索服务。
 - `schemas/`：Pydantic 请求/响应模型。
 - `services/auth.py`：密码哈希、JWT 签发/校验、会话轮换与撤销业务规则。
+- `tests/test_auth_integration.py`：认证 API 到 PostgreSQL 的集成测试；使用唯一测试用户并在每个用例结束后清理测试数据。
 
 ## 数据库与存储
 
@@ -87,16 +88,24 @@
 | 接口 | 当前职责 | 状态 |
 | --- | --- | --- |
 | `GET /api/health` | 返回服务健康状态 | 已实现，未在本次启动验证 |
-| `POST /api/auth/register` | 创建用户 | 已实现，待数据库集成验证 |
-| `POST /api/auth/login` | 验证密码并签发令牌 | 已实现，待数据库集成验证 |
-| `POST /api/auth/refresh` | 刷新并轮换令牌 | 已实现，待数据库集成验证 |
-| `GET /api/auth/me` | 获取当前用户 | 已实现，待数据库集成验证 |
-| `POST /api/auth/logout` | 撤销令牌/会话 | 已实现，待数据库集成验证 |
+| `POST /api/auth/register` | 创建用户 | 已实现，PostgreSQL 集成与重复注册测试通过 |
+| `POST /api/auth/login` | 验证密码并签发令牌 | 已实现，PostgreSQL 集成与错误密码测试通过 |
+| `POST /api/auth/refresh` | 刷新并轮换令牌 | 已实现，轮换与旧令牌重放拒绝测试通过 |
+| `GET /api/auth/me` | 获取当前用户 | 已实现，过期会话与撤销访问令牌拒绝测试通过 |
+| `POST /api/auth/logout` | 撤销令牌/会话 | 已实现，访问令牌和刷新会话撤销测试通过 |
 | `POST /api/chat` | 认证后返回回显文本 | 接口骨架，不是 AI 回答 |
+| `GET /api/chat/entry` | 解析当前用户默认智能体，未设置时回退内置 AI 管家 | 已实现，PostgreSQL 集成测试通过 |
+| `GET/POST/PATCH/DELETE /api/agents` | 智能体读取、创建、更新、软删除 | 已实现，所有权与内置不可变规则已测试 |
+| `PUT /api/agents/{agentId}/default` | 设为当前用户默认个人智能体 | 已实现，集成测试通过 |
+| `DELETE /api/agents/default` | 仅清空当前用户默认设置 | 已实现，集成测试通过 |
+| `GET/POST /api/conversations` | 按当前智能体列出/创建当前用户会话 | 已实现，用户与智能体隔离已测试 |
+| `GET /api/conversations/{conversationId}` | 获取当前用户单个会话及消息 | 已实现，用户隔离已测试 |
 
 ## 知识库与智能体工作流
 
-规划中。当前仓库中没有文档加载、解析、切分、Embedding、向量存储读写、检索、重排、Prompt 管理、模型适配、工具调用或工作流状态定义。虽然数据库初始化启用了 pgvector，但这不构成已实现的 RAG 流程。
+智能体与会话的持久化基础已实现：`routers/agents.py`、`routers/conversations.py` 处理鉴权和 HTTP 契约；`services/agents.py`、`services/conversations.py` 执行业务规则；`repositories/` 集中 PostgreSQL 查询。`agents`、`user_preferences`、`agent_preset_questions`、`conversations`、`messages` 由迁移 `20260723_0002` 创建，内置 AI 管家为固定 UUID 的种子记录。
+
+文档加载、解析、切分、Embedding、向量存储读写、检索、重排、Prompt 管理、模型适配、工具调用或工作流状态定义仍未实现。虽然数据库初始化启用了 pgvector，但这不构成已实现的 RAG 流程。
 
 后续实现应将上述能力放入职责独立的模块（如 `retrieval/`、`agents/`、`workflows/` 与模型/存储 `integrations/`），避免把完整流程堆积到路由或单一服务中。
 

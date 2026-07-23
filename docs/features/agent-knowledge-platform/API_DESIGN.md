@@ -19,6 +19,7 @@
 | API-003 | POST | `/agents` | 创建智能体 | FR-002 |
 | API-004 | GET/PATCH/DELETE | `/agents/{agentId}` | 获取、更新、删除本人智能体 | FR-002 |
 | API-005 | PUT | `/agents/{agentId}/default` | 设为默认打开 | FR-002 |
+| API-005A | DELETE | `/agents/default` | 清空默认打开设置 | FR-001、FR-002 |
 | API-006 | GET/POST | `/conversations` | 查询/创建会话 | FR-003 |
 | API-007 | GET | `/conversations/{conversationId}` | 获取会话与消息 | FR-003 |
 | API-008 | POST | `/conversations/{conversationId}/messages:stream` | 发送消息并接收 SSE | FR-003、FR-005 |
@@ -32,7 +33,7 @@
 
 ```json
 {
-  "agent": { "id": "system-ai-manager", "kind": "builtin", "name": "AI管家" }
+  "agent": { "id": "00000000-0000-0000-0000-000000000001", "kind": "builtin", "name": "AI管家" }
 }
 ```
 
@@ -58,7 +59,7 @@
 ```
 
 - `name`：1–80 字符；`description`：最多 500 字符；`systemPrompt`：最多 8000 字符。
-- `knowledgeScopes` 节点必须属于当前用户；空数组合法。
+- 本阶段暂不接收 `knowledgeScopes`；待阶段 3 的 `knowledge_nodes` 与资料范围表完成后再开放该字段。
 - 内置智能体的 PATCH/DELETE 返回 `AGENT_IMMUTABLE`。
 - 删除默认智能体返回 `DEFAULT_AGENT_MUST_BE_CLEARED`；删除成功仅写入软删除标记，响应 `204 No Content`。
 
@@ -69,9 +70,16 @@
 - 智能体不属于当前用户时返回 `RESOURCE_NOT_FOUND`。
 - 该操作幂等；同一用户事务内只保留一个默认值。
 
+## API-005A：清空默认打开
+
+- 请求为空，成功响应 `204 No Content`。
+- 此接口只将当前用户的 `user_preferences.default_agent_id` 置为空，**不会删除任何智能体**。
+- 清空后，聊天入口回退为 `kind: "builtin"` 的内置 AI 管家。
+- 删除某个默认个人智能体前必须先调用本接口；这样不会留下指向已软删除智能体的默认设置。
+
 ## API-006/007：会话
 
-创建请求：`{ "agentId": "system-ai-manager 或个人智能体 UUID" }`。
+创建请求：`{ "agentId": "内置 AI 管家的固定 UUID 或个人智能体 UUID" }`。
 
 会话响应包含 `id`、`agent`、`title`、`updatedAt`、`messages`。会话列表请求必须传入当前智能体 ID；读取会话时，当前智能体与会话归属不匹配应返回资源不存在。
 
