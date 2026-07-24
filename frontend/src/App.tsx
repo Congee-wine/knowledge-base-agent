@@ -82,7 +82,7 @@ function App() {
             <Route path={routes.app.chat} element={<AiManagerPage />} />
             <Route path="/app/chat/agents/:agentId" element={<ChatPage />} />
             <Route path={routes.app.agents} element={<AgentListPage />} />
-            <Route path={routes.app.agentNew} element={<AgentEditorPage />} />
+            <Route path={routes.app.agentNew} element={<Navigate to={routes.app.agents} replace />} />
             <Route path="/app/agents/:agentId/edit" element={<AgentEditorPage />} />
             <Route path={routes.app.knowledgeBases} element={<EmptyPage />} />
           </Route>

@@ -1,5 +1,19 @@
 # 接口设计
 
+## 创建基础信息与私有头像
+
+### POST /api/agents/bootstrap
+
+- 认证：Bearer access token。
+- 请求：`multipart/form-data`，字段为 `name`（必填，最多 80 字符）、`description`（可选，最多 500 字符）和 `avatar`（可选）。
+- `avatar` 仅允许 PNG/JPG/JPEG/GIF/WEBP，最大 5MB；服务端以文件签名而非客户端 MIME 声明判断格式。
+- 成功：`201`，返回已创建的文本交互个人智能体。前端据此跳转至编辑页继续配置。
+
+### GET /api/agents/{agentId}/avatar
+
+- 认证：Bearer access token；仅拥有者可读取个人智能体头像。
+- 成功返回私有对象二进制内容与真实图片 Content-Type；不返回可公开访问的 MinIO URL。
+
 ## 1. 通用约定
 
 - 基础路径：`/api`。

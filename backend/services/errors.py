@@ -16,3 +16,7 @@ def immutable_agent() -> DomainError:
 
 def default_agent_must_be_cleared() -> DomainError:
     return DomainError(409, "DEFAULT_AGENT_MUST_BE_CLEARED", "请先清空默认智能体，再删除该智能体")
+
+
+def object_storage_unavailable() -> DomainError:
+    return DomainError(503, "OBJECT_STORAGE_UNAVAILABLE", "头像存储服务暂不可用，请检查 MinIO 配置后重试")

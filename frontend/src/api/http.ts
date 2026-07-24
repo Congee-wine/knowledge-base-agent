@@ -17,6 +17,12 @@ type RequestOptions = Omit<RequestInit, 'body' | 'headers'> & {
   headers?: HeadersInit
 }
 
+async function assertSuccess(response: Response): Promise<void> {
+  if (response.ok) return
+  const data: unknown = await response.json().catch(() => undefined)
+  throw new ApiError(response.status, data, '请求未完成，请稍后重试')
+}
+
 function getErrorMessage(data: unknown, fallbackMessage: string) {
   if (typeof data === 'object' && data !== null && 'detail' in data && typeof data.detail === 'string') return data.detail
   return fallbackMessage
@@ -33,4 +39,16 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 
   if (!response.ok) throw new ApiError(response.status, data, '请求未完成，请稍后重试')
   return data as T
+}
+
+export async function requestForm<T>(path: string, formData: FormData, options: Omit<RequestOptions, 'body'> = {}): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, { ...options, body: formData })
+  await assertSuccess(response)
+  return await response.json() as T
+}
+
+export async function requestBlob(path: string, options: Omit<RequestOptions, 'body'> = {}): Promise<Blob> {
+  const response = await fetch(`${API_BASE_URL}${path}`, options)
+  await assertSuccess(response)
+  return response.blob()
 }

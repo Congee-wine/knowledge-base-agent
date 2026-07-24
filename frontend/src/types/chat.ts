@@ -11,6 +11,7 @@ export type ChatAgent = {
   presetQuestions: string[]
   allowConversationUpload: boolean
   allowNetworkAccess: boolean
+  interactionType: 'text' | 'voice' | 'digital_human'
   createdAt: string
   updatedAt: string
 }

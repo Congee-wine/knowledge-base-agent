@@ -17,6 +17,7 @@ type FormState = Omit<AgentFormValues, 'description' | 'avatarKey' | 'systemProm
 const initialValues: FormState = {
   allowConversationUpload: false,
   allowNetworkAccess: false,
+  interactionType: 'text',
   name: '',
   presetQuestions: [],
 }

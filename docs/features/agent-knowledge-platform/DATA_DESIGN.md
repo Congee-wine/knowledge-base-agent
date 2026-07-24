@@ -1,5 +1,11 @@
 # 数据设计
 
+## 交互类型与头像对象
+
+- 迁移 `20260724_0005` 为 `agents` 增加非空 `interaction_type`，约束为 `text`、`voice`、`digital_human`；现有及首期新建记录默认 `text`。
+- `agents.avatar_key` 保存私有 MinIO 对象键，首期键前缀为 `agent-avatars/{userId}/`；图片二进制不存入 PostgreSQL，客户端不持久化对象 URL。
+- 删除个人智能体后尝试移除关联头像对象；对象删除失败记录服务端异常日志，不回滚已经完成的软删除。
+
 ## 1. 存储范围
 
 - PostgreSQL：用户偏好、智能体、会话、消息、资料树、文件版本、处理任务、分块、引用和资料范围关联。

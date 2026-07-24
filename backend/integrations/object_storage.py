@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from io import BytesIO
 
 from minio import Minio
 
@@ -51,3 +52,21 @@ def create_object_storage_client() -> Minio:
         secret_key=settings.secret_key,
         secure=settings.secure,
     )
+
+
+def put_private_object(object_key: str, content: bytes, content_type: str) -> None:
+    client = create_object_storage_client()
+    settings = get_object_storage_settings()
+    client.put_object(settings.bucket, object_key, BytesIO(content), len(content), content_type=content_type)
+
+
+def read_private_object(object_key: str):
+    client = create_object_storage_client()
+    settings = get_object_storage_settings()
+    return client.get_object(settings.bucket, object_key)
+
+
+def remove_private_object(object_key: str) -> None:
+    client = create_object_storage_client()
+    settings = get_object_storage_settings()
+    client.remove_object(settings.bucket, object_key)

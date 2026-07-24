@@ -15,6 +15,7 @@ class AgentWriteFields(BaseModel):
     preset_questions: list[str] = Field(default_factory=list, max_length=10, alias="presetQuestions")
     allow_conversation_upload: bool = Field(default=False, alias="allowConversationUpload")
     allow_network_access: bool = Field(default=False, alias="allowNetworkAccess")
+    interaction_type: Literal["text", "voice", "digital_human"] = Field(default="text", alias="interactionType")
 
 
 class CreateAgentRequest(AgentWriteFields):
@@ -30,6 +31,7 @@ class UpdateAgentRequest(BaseModel):
     preset_questions: list[str] | None = Field(default=None, max_length=10, alias="presetQuestions")
     allow_conversation_upload: bool | None = Field(default=None, alias="allowConversationUpload")
     allow_network_access: bool | None = Field(default=None, alias="allowNetworkAccess")
+    interaction_type: Literal["text", "voice", "digital_human"] | None = Field(default=None, alias="interactionType")
 
 
 class AgentResponse(BaseModel):
@@ -43,6 +45,7 @@ class AgentResponse(BaseModel):
     preset_questions: list[str] = Field(serialization_alias="presetQuestions")
     allow_conversation_upload: bool = Field(serialization_alias="allowConversationUpload")
     allow_network_access: bool = Field(serialization_alias="allowNetworkAccess")
+    interaction_type: Literal["text", "voice", "digital_human"] = Field(serialization_alias="interactionType")
     created_at: datetime = Field(serialization_alias="createdAt")
     updated_at: datetime = Field(serialization_alias="updatedAt")
 

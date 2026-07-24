@@ -9,6 +9,7 @@ export type AgentFormValues = {
   presetQuestions: string[]
   allowConversationUpload: boolean
   allowNetworkAccess: boolean
+  interactionType: 'text' | 'voice' | 'digital_human'
 }
 
 export type AgentListResponse = { items: ChatAgent[] }

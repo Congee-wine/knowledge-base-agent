@@ -97,11 +97,21 @@ html, body, #root { min-height: 100%; margin: 0; }
 .agent-card__title { max-width: calc(100% - 68px); margin: 0; overflow: hidden; color: #314155; font-size: 16px; font-weight: 500; line-height: 22px; text-overflow: ellipsis; white-space: nowrap; }
 .agent-card__description { display: -webkit-box; max-width: calc(100% - 72px); min-height: 34px; margin: 1px 0 0; overflow: hidden; color: #8d99aa; font-size: 12px; line-height: 17px; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .agent-card__avatar { position: absolute; top: 14px; right: 16px; display: grid; width: 52px; height: 52px; place-items: center; overflow: hidden; border-radius: 10px; background: linear-gradient(145deg, #e8f0ff, #f1f4ff); color: #4776fb; font-size: 20px; font-weight: 600; }
+.agent-card__avatar img { width: 100%; height: 100%; object-fit: cover; }
 .agent-card__labels { position: absolute; bottom: 38px; left: 16px; display: flex; flex-wrap: wrap; gap: 5px; }
 .agent-card__labels .ant-tag { margin-inline-end: 0; border-radius: 4px; font-size: 11px; line-height: 19px; }
 .agent-card__footer { position: absolute; right: 40px; bottom: 13px; left: 16px; display: flex; gap: 6px; overflow: hidden; color: #718095; font-size: 11px; white-space: nowrap; }
 .agent-card__footer span:first-child { display: inline-flex; align-items: center; gap: 4px; }
 .agent-card__more { position: absolute !important; right: 6px; bottom: 6px; color: #66768b !important; }
+
+.create-agent-modal { padding-top: 10px; }
+.create-agent-modal__upload { position: relative; display: grid; width: 96px; height: 96px; place-items: center; overflow: hidden; border: 1px dashed #ccd4e0; border-radius: 8px; background: #fff; color: #8994a5; font-size: 32px; cursor: pointer; }
+.create-agent-modal__upload img { width: 100%; height: 100%; object-fit: cover; }
+.create-agent-modal__selected { position: absolute; top: -1px; right: -1px; display: grid; width: 26px; height: 26px; place-items: center; border-radius: 0 7px 0 8px; background: #55ba35; color: #fff; font-size: 15px; }
+.create-agent-modal__hint, .create-agent-modal__file { margin: 8px 0 0; color: #79869a; font-size: 12px; }
+.create-agent-modal__hint strong { color: #ff6c6c; }
+.create-agent-modal__file { color: #4d5f77; }
+.create-agent-modal__actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 32px; }
 
 @media (max-width: 900px) {
   .agent-list-page { padding: 20px 16px; }

@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { clearDefaultAgent, deleteAgent, setDefaultAgent } from '../api/agents'
 import { AgentCard } from '../features/agents/components/AgentCard'
+import { CreateAgentModal } from '../features/agents/components/CreateAgentModal'
 import { agentKeys } from '../features/agents/agentKeys'
 import { useAgents } from '../features/agents/hooks/useAgents'
 import { useChatEntry } from '../features/chat/hooks/useChatEntry'
@@ -34,6 +35,7 @@ export function AgentListPage() {
   const agentsQuery = useAgents()
   const entryQuery = useChatEntry()
   const [selectedCategory, setSelectedCategory] = useState<AgentCategory>('all')
+  const [createModalOpen, setCreateModalOpen] = useState(false)
   const invalidateAgentState = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: agentKeys.all }),
@@ -88,7 +90,7 @@ export function AgentListPage() {
     <header className="agent-list-page__banner">
       <div className="agent-list-page__banner-art" aria-hidden="true"><span /><i /></div>
       <div><h1>智能体</h1><p>管理您的智能体，控制您的智能体分发策略。</p></div>
-      <Button className="agent-list-page__create" icon={<FormOutlined />} onClick={() => navigate(routes.app.agentNew)}>新建智能体</Button>
+      <Button className="agent-list-page__create" icon={<FormOutlined />} onClick={() => setCreateModalOpen(true)}>新建智能体</Button>
     </header>
     <nav className="agent-list-page__tabs" aria-label="智能体类型">
       {categoryTabs.map(tab => <button key={tab.id} aria-pressed={selectedCategory === tab.id} className={selectedCategory === tab.id ? 'is-active' : ''} type="button" onClick={() => setSelectedCategory(tab.id)}>{tab.label}</button>)}
@@ -96,5 +98,9 @@ export function AgentListPage() {
     {filteredAgents.length ? <div className="agent-list-page__grid">
       {filteredAgents.map(agent => <AgentCard key={agent.id} agent={agent} isDefault={agent.id === defaultAgentId} onDelete={removeAgent} onEdit={item => navigate(routes.app.agentEdit(item.id))} onOpen={openAgent} onSetDefault={item => void makeDefault(item)} />)}
     </div> : <Empty description={`暂无${categoryTabs.find(tab => tab.id === selectedCategory)?.label ?? '智能体'}`} />}
+    <CreateAgentModal open={createModalOpen} onOpenChange={setCreateModalOpen} onCreated={agentId => {
+      void invalidateAgentState()
+      navigate(routes.app.agentEdit(agentId))
+    }} />
   </section>
 }

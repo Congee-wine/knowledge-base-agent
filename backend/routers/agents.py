@@ -1,6 +1,7 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
+from fastapi.responses import Response as FastApiResponse
 
 from dependencies import get_current_user
 from schemas.agents import (
@@ -33,10 +34,30 @@ def create_agent(data: CreateAgentRequest, current_user: Annotated[UserResponse,
     return agent_service.create_agent(current_user.id, data)
 
 
+@router.post("/agents/bootstrap", response_model=AgentResponse, status_code=status.HTTP_201_CREATED)
+async def create_agent_bootstrap(
+    name: Annotated[str, Form()],
+    description: Annotated[str | None, Form()] = None,
+    avatar: Annotated[UploadFile | None, File()] = None,
+    current_user: UserResponse = Depends(get_current_user),
+) -> AgentResponse:
+    avatar_content = await avatar.read() if avatar is not None else None
+    try:
+        return agent_service.create_agent_with_avatar(current_user.id, name, description, avatar_content)
+    except agent_service.AgentAvatarValidationError as error:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from error
+
+
 @router.delete("/agents/default", status_code=status.HTTP_204_NO_CONTENT)
 def clear_default_agent(current_user: Annotated[UserResponse, Depends(get_current_user)]) -> Response:
     agent_service.clear_default_agent(current_user.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/agents/{agent_id}/avatar")
+def read_agent_avatar(agent_id: str, current_user: Annotated[UserResponse, Depends(get_current_user)]) -> FastApiResponse:
+    content, content_type = agent_service.read_agent_avatar(current_user.id, agent_id)
+    return FastApiResponse(content=content, media_type=content_type, headers={"Cache-Control": "private, max-age=300"})
 
 
 @router.get("/agents/{agent_id}", response_model=AgentResponse)
