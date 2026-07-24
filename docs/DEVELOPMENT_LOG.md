@@ -1,5 +1,86 @@
 # 开发日志
 
+## 2026-07-24：智能体列表设计稿视觉还原
+
+### 任务目标
+
+根据用户提供的智能体列表设计稿，重构此前功能优先版本的页面视觉，不改变智能体、默认打开、删除或聊天跳转的既有规则。
+
+### 实现内容
+
+- 重构顶部横幅、分类栏、卡片网格、卡片标签和底部编辑信息，使布局密度与设计稿对齐。
+- 调整左侧侧栏宽度和导航节奏，并补齐设计稿中的自动化任务展示项。
+- 原设计插画和头像资源暂未提供；以可替换的本地 CSS 占位图形维持相同的空间结构和视觉层级。
+- 根据后续视觉反馈，缩小横幅标题、说明、新建按钮和卡片内部字号；随后确认需要收紧的是顶部“新建智能体”横幅，将其高度从 144px 调整为 112px，列表卡片保持 158px。
+- 补充可点击分类筛选：官方筛选只显示内置 AI 管家，现有会话智能体归入文本会话；数字人与语音筛选在尚无对应数据时展示空状态。网格改为不拉伸的最大 496px 卡片宽度，操作菜单使用横向省略号。
+- 根据浏览器实际显示效果，将卡片网格最大宽度进一步收紧至 330px，并在分类栏与卡片网格之间增加 16px 间距，避免筛选标签紧贴卡片。
+
+### 主要文件
+
+- `frontend/src/pages/AgentListPage.tsx`：智能体列表页面的横幅、分类栏与网格结构。
+- `frontend/src/features/agents/components/AgentCard.tsx`：卡片内容、标签、编辑信息和操作菜单布局。
+- `frontend/src/layouts/AppLayout.tsx`、`frontend/src/style.css`：侧栏和页面级视觉规则。
+
+### 技术方案
+
+保留真实 API 列表、默认排序和操作菜单，仅替换展示组件与 CSS。头像与横幅插画隔离为视觉位，避免未来获取原 SVG 后牵连业务数据或路由逻辑。
+
+### 接口或数据变化
+
+无。未新增依赖、后端接口或数据库变更。
+
+### 验证情况
+
+- 通过：`frontend/` 中 `pnpm build`。
+- 未执行：浏览器截图与设计稿的像素级人工比对；原设计插画和头像资源未提供。
+
+### 遗留问题
+
+- 后续取得原始 SVG 或头像资源后，需替换当前占位图形并完成最终视觉验收。
+
+## 2026-07-24：智能体管理前后端联调
+
+### 任务目标
+
+实现个人智能体的列表、创建、编辑、默认打开、删除和聊天切换，并让内置 AI 管家可重新作为默认打开对象。
+
+### 实现内容
+
+- 新增智能体列表页、创建/编辑表单和指定智能体聊天路由；聊天页面复用既有会话与消息回显链路。
+- 左侧“我的智能体”改为真实数据：默认项置顶，AI 管家与其他个人智能体按规则展示。
+- 卡片三点菜单支持个人智能体设默认、编辑、删除；AI 管家仅支持恢复默认打开。
+- 新增 `allow_network_access` 数据库字段、API 契约和聊天输入区显示逻辑；实际联网仍未调用外部服务。
+
+### 主要文件
+
+- `frontend/src/pages/AgentListPage.tsx`、`AgentEditorPage.tsx`：智能体管理页面与表单。
+- `frontend/src/pages/ChatPage.tsx`、`layouts/AppLayout.tsx`：指定智能体聊天复用与动态侧栏。
+- `frontend/src/api/agents.ts`、`frontend/src/features/agents/`：智能体 API、查询键、查询 Hook 与卡片组件。
+- `backend/migrations/versions/20260724_0004_agent_network_access.py`：联网入口显示配置迁移。
+- `backend/schemas/agents.py`、`repositories/agents.py`、`services/agents.py`：配置字段的读写与响应映射。
+
+### 技术方案
+
+默认智能体继续由服务端入口解析结果作为唯一事实来源。AI 管家“设为默认”调用清空个人默认配置的既有接口，从而保持数据库只保存个人默认智能体、为空即回退 AI 管家的既定模型。删除维持软删除，前端不暴露已删除智能体及其会话入口。
+
+### 接口或数据变化
+
+- 新增并已执行 Alembic 迁移 `20260724_0004`，为 `agents` 添加非空布尔字段 `allow_network_access`，已有记录默认 `false`。
+- `POST/PATCH/GET /api/agents` 的请求或响应增加 `allowNetworkAccess`。
+- 新增前端路由 `/app/chat/agents/:agentId`、`/app/agents/new`、`/app/agents/:agentId/edit`；未新增后端 HTTP 路由。
+
+### 验证情况
+
+- 通过：`backend/.venv/Scripts/python.exe -m unittest tests.test_agents_conversations_integration -v`，9 项真实 PostgreSQL 集成测试通过。
+- 通过：`backend/.venv/Scripts/python.exe -m compileall -q .`。
+- 通过：`frontend/` 中 `pnpm build`；首次沙箱内构建因既有依赖读取权限失败，在获批的受限环境外重跑后通过。
+- 未执行：浏览器人工端到端检查与像素级原型比对。
+
+### 遗留问题
+
+- 联网按钮目前仅控制显示并提示“功能暂未支持”；DeepSeek、检索和 SSE 尚未接入。
+- 生产构建仍有超过 500 kB 的代码块警告，后续可按路由懒加载处理。
+
 ## 2026-07-23：PostgreSQL 连接池优化
 
 ### 任务目标

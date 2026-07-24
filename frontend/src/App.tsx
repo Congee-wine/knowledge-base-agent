@@ -8,6 +8,9 @@ import { ApiError } from './api/http'
 import { clearStoredSession, getTokenExpiresAt, getStoredAccessToken, refreshSession } from './lib/auth'
 import { AuthPage } from './pages/AuthPage'
 import { AiManagerPage } from './pages/AiManagerPage'
+import { AgentEditorPage } from './pages/AgentEditorPage'
+import { AgentListPage } from './pages/AgentListPage'
+import { ChatPage } from './pages/ChatPage'
 import { EmptyPage } from './pages/EmptyPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { GuestOnly } from './routes/GuestOnly'
@@ -74,7 +77,10 @@ function App() {
           <Route element={user ? <AppLayout user={user} onLogout={clearUser} /> : null}>
             <Route path={routes.app.root} element={<Navigate to={routes.app.chat} replace />} />
             <Route path={routes.app.chat} element={<AiManagerPage />} />
-            <Route path={routes.app.agents} element={<EmptyPage />} />
+            <Route path="/app/chat/agents/:agentId" element={<ChatPage />} />
+            <Route path={routes.app.agents} element={<AgentListPage />} />
+            <Route path={routes.app.agentNew} element={<AgentEditorPage />} />
+            <Route path="/app/agents/:agentId/edit" element={<AgentEditorPage />} />
             <Route path={routes.app.knowledgeBases} element={<EmptyPage />} />
           </Route>
         </Route>

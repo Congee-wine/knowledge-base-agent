@@ -6,9 +6,13 @@ export type ChatAgent = {
   name: string
   description: string | null
   avatarKey: string | null
+  systemPrompt: string | null
   welcomeMessage: string | null
   presetQuestions: string[]
   allowConversationUpload: boolean
+  allowNetworkAccess: boolean
+  createdAt: string
+  updatedAt: string
 }
 
 export type Conversation = {

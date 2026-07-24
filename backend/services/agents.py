@@ -71,6 +71,7 @@ def _create_values(data: CreateAgentRequest) -> dict[str, Any]:
         "system_prompt": data.system_prompt,
         "welcome_message": data.welcome_message,
         "allow_conversation_upload": data.allow_conversation_upload,
+        "allow_network_access": data.allow_network_access,
     }
 
 
@@ -82,6 +83,7 @@ def _update_values(data: UpdateAgentRequest) -> dict[str, Any]:
         "system_prompt": data.system_prompt,
         "welcome_message": data.welcome_message,
         "allow_conversation_upload": data.allow_conversation_upload,
+        "allow_network_access": data.allow_network_access,
     }
     return {name: value for name, value in field_map.items() if name in data.model_fields_set}
 
@@ -92,4 +94,5 @@ def _to_response(row: Mapping[str, Any], preset_questions: list[str] | None = No
         avatar_key=row["avatar_key"], system_prompt=row["system_prompt"], welcome_message=row["welcome_message"],
         preset_questions=preset_questions if preset_questions is not None else agent_repository.get_preset_questions(str(row["id"])),
         allow_conversation_upload=row["allow_conversation_upload"], created_at=row["created_at"], updated_at=row["updated_at"],
+        allow_network_access=row["allow_network_access"],
     )

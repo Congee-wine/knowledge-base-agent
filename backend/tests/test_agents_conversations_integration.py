@@ -86,6 +86,24 @@ class AgentsAndConversationsIntegrationTests(unittest.TestCase):
         self.assertEqual(deleted.status_code, 204)
         self.assertEqual(entry.json()["agent"]["kind"], "builtin")
 
+    def test_personal_agent_persists_network_entry_visibility(self) -> None:
+        headers = self.create_headers()
+        created = self.client.post(
+            "/api/agents",
+            headers=headers,
+            json={"name": "联网测试助手", "allowNetworkAccess": True},
+        )
+        updated = self.client.patch(
+            f"/api/agents/{created.json()['id']}",
+            headers=headers,
+            json={"allowNetworkAccess": False},
+        )
+
+        self.assertEqual(created.status_code, 201)
+        self.assertTrue(created.json()["allowNetworkAccess"])
+        self.assertEqual(updated.status_code, 200)
+        self.assertFalse(updated.json()["allowNetworkAccess"])
+
     def test_agents_and_conversations_are_isolated_by_user(self) -> None:
         owner_headers = self.create_headers()
         other_headers = self.create_headers()

@@ -35,7 +35,7 @@ export function ChatComposer({ agent, value, sending, onChange, onSubmit }: Prop
             <div className="flex flex-wrap items-center gap-2">
               {isBuiltin && <Button size="small" type={useKnowledgeBase ? 'primary' : 'default'} onClick={() => setUseKnowledgeBase(enabled => !enabled)}>全部资料</Button>}
               <Button icon={<RobotOutlined />} size="small" onClick={notifyUnsupported}>Agent</Button>
-              {isBuiltin && <Button aria-label="联网" icon={<GlobalOutlined />} size="small" onClick={notifyUnsupported} />}
+              {(isBuiltin || agent.allowNetworkAccess) && <Button aria-label="联网" icon={<GlobalOutlined />} size="small" onClick={notifyUnsupported} />}
               {(isBuiltin || agent.allowConversationUpload) && <Button aria-label="上传文件" icon={<PaperClipOutlined />} size="small" onClick={notifyUnsupported} />}
             </div>
             <div className="prototype-chat-actions shrink-0">{actionNode}</div>

@@ -3,11 +3,14 @@ import {
   AppstoreOutlined,
   BellOutlined,
   DatabaseOutlined,
+  FundProjectionScreenOutlined,
   LogoutOutlined,
   RobotOutlined,
   SearchOutlined,
 } from '@ant-design/icons'
 import { Avatar, Button, Input } from 'antd'
+import { useAgents } from '../features/agents/hooks/useAgents'
+import { useChatEntry } from '../features/chat/hooks/useChatEntry'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { logout } from '../lib/auth'
 import { routes } from '../routes/paths'
@@ -25,16 +28,26 @@ export function AppLayout({ user, onLogout }: Props) {
   const navigate = useNavigate()
   const location = useLocation()
   const [collapsed, setCollapsed] = useState(false)
+  const agentsQuery = useAgents()
+  const entryQuery = useChatEntry()
 
   const handleLogout = async () => {
     await logout()
     onLogout()
     navigate(routes.login)
   }
+  const defaultAgentId = entryQuery.data?.agent.id
+  const sidebarAgents = [...(agentsQuery.data?.items ?? [])].sort((left, right) => {
+    if (left.id === defaultAgentId) return -1
+    if (right.id === defaultAgentId) return 1
+    if (left.kind === 'builtin') return -1
+    if (right.kind === 'builtin') return 1
+    return Date.parse(right.updatedAt) - Date.parse(left.updatedAt)
+  })
 
   return (
     <main className="flex h-screen overflow-hidden bg-white text-slate-700">
-      <aside className={`flex shrink-0 flex-col border-r border-slate-200 bg-[#fbfcff] transition-[width] duration-200 ${collapsed ? 'w-[64px]' : 'w-[256px]'}`}>
+      <aside className={`flex shrink-0 flex-col border-r border-slate-200 bg-[#fbfcff] transition-[width] duration-200 ${collapsed ? 'w-[64px]' : 'w-[240px]'}`}>
         <div className={`flex h-[70px] items-center ${collapsed ? 'justify-center' : 'justify-between px-4'}`}>
           {!collapsed && (
             <div className="flex items-center gap-2 text-xl font-bold tracking-tight text-slate-800">
@@ -70,14 +83,15 @@ export function AppLayout({ user, onLogout }: Props) {
                   {item.label}
                 </NavLink>
               ))}
+              <div className="mb-1 flex h-12 cursor-default items-center gap-3 rounded-xl px-3 text-[15px] text-slate-600"><span className="text-xl"><FundProjectionScreenOutlined /></span>自动化任务</div>
             </nav>
 
             <div className="mt-3 border-t border-slate-200 px-4 pt-4">
               <p className="mb-3 text-sm text-slate-500">我的智能体</p>
-              <NavLink className="flex h-12 items-center gap-3 rounded-xl bg-indigo-50 px-2 text-[15px] text-[#3665e6]" to={routes.app.chat}>
-                <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-cyan-300 to-indigo-500 text-base text-white"><RobotOutlined /></span>
-                AI管家
-              </NavLink>
+              {sidebarAgents.map(agent => <NavLink key={agent.id} className={({ isActive }) => `mb-1 flex h-12 items-center gap-3 rounded-xl px-2 text-[15px] ${isActive || (agent.kind === 'builtin' && location.pathname === routes.app.chat) ? 'bg-indigo-50 text-[#3665e6]' : 'text-slate-600 hover:bg-slate-100'}`} to={agent.kind === 'builtin' ? routes.app.chat : routes.app.chatAgent(agent.id)}>
+                <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-cyan-300 to-indigo-500 text-base text-white">{agent.name.slice(0, 1)}</span>
+                <span className="truncate">{agent.name}</span>
+              </NavLink>)}
             </div>
 
             <div className="mt-auto flex items-center gap-2 border-t border-slate-200 px-4 py-4">

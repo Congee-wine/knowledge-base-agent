@@ -62,11 +62,12 @@ def create_personal_agent(user_id: str, values: Mapping[str, Any], questions: It
             cursor.execute(
                 """INSERT INTO agents (
                     id, owner_user_id, kind, name, description, avatar_key, system_prompt,
-                    welcome_message, allow_conversation_upload, created_at, updated_at
-                ) VALUES (%s, %s, 'personal', %s, %s, %s, %s, %s, %s, %s, %s)
+                    welcome_message, allow_conversation_upload, allow_network_access, created_at, updated_at
+                ) VALUES (%s, %s, 'personal', %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING *""",
                 (agent_id, user_id, values["name"], values["description"], values["avatar_key"],
-                 values["system_prompt"], values["welcome_message"], values["allow_conversation_upload"], now, now),
+                 values["system_prompt"], values["welcome_message"], values["allow_conversation_upload"],
+                 values["allow_network_access"], now, now),
             )
             row = cursor.fetchone()
             _replace_questions(cursor, agent_id, questions)
