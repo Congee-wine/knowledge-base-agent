@@ -5,7 +5,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AppLayout } from './layouts/AppLayout'
 import { getCurrentUser } from './api/auth'
 import { ApiError } from './api/http'
-import { clearStoredSession, getTokenExpiresAt, getStoredAccessToken, refreshSession } from './lib/auth'
+import { clearStoredSession, getStoredUser, getTokenExpiresAt, getStoredAccessToken, isAuthenticationRejected, refreshSession } from './lib/auth'
 import { AuthPage } from './pages/AuthPage'
 import { AiManagerPage } from './pages/AiManagerPage'
 import { AgentEditorPage } from './pages/AgentEditorPage'
@@ -25,6 +25,8 @@ function App() {
   const setUser = useAuthStore(state => state.setUser)
   const clearUser = useAuthStore(state => state.clearUser)
   const accessToken = getStoredAccessToken()
+  const cachedUser = accessToken ? getStoredUser() : null
+  const authenticatedUser = user ?? cachedUser
   const sessionQuery = useQuery({
     queryKey: ['auth', 'current-user', accessToken],
     queryFn: async () => {
@@ -44,10 +46,10 @@ function App() {
   }, [sessionQuery.data, setUser])
 
   useEffect(() => {
-    if (!sessionQuery.isError) return
+    if (!sessionQuery.isError || !isAuthenticationRejected(sessionQuery.error)) return
     clearStoredSession()
     clearUser()
-  }, [sessionQuery.isError, clearUser])
+  }, [sessionQuery.isError, sessionQuery.error, clearUser])
 
   useEffect(() => {
     if (!user) return
@@ -55,7 +57,8 @@ function App() {
     if (!accessToken) return
     const delay = Math.max(0, getTokenExpiresAt(accessToken) - Date.now() - REFRESH_BEFORE_EXPIRY_MS)
     const timer = window.setTimeout(() => {
-      void refreshSession().then(setUser).catch(() => {
+      void refreshSession().then(setUser).catch(error => {
+        if (!isAuthenticationRejected(error)) return
         clearStoredSession()
         clearUser()
       })
@@ -69,12 +72,12 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path={routes.home} element={<Navigate to={routes.app.chat} replace />} />
-        <Route element={<GuestOnly user={user} />}>
+        <Route element={<GuestOnly user={authenticatedUser} />}>
           <Route path={routes.login} element={<AuthPage mode="login" onAuthenticated={setUser} />} />
           <Route path={routes.register} element={<AuthPage mode="register" onAuthenticated={setUser} />} />
         </Route>
-        <Route element={<RequireAuth user={user} />}>
-          <Route element={user ? <AppLayout user={user} onLogout={clearUser} /> : null}>
+        <Route element={<RequireAuth user={authenticatedUser} />}>
+          <Route element={authenticatedUser ? <AppLayout user={authenticatedUser} onLogout={clearUser} /> : null}>
             <Route path={routes.app.root} element={<Navigate to={routes.app.chat} replace />} />
             <Route path={routes.app.chat} element={<AiManagerPage />} />
             <Route path="/app/chat/agents/:agentId" element={<ChatPage />} />

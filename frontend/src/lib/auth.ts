@@ -1,9 +1,21 @@
 import { refreshTokens, revokeSession } from '../api/auth'
+import { ApiError } from '../api/http'
 import type { TokenResponse, User } from '../types/auth'
 const ACCESS_TOKEN_KEY = 'access_token'
 const REFRESH_TOKEN_KEY = 'refresh_token'
 const CURRENT_USER_KEY = 'current_user'
 let refreshRequest: Promise<User> | null = null
+
+export class MissingRefreshTokenError extends Error {
+  constructor() {
+    super('登录已过期')
+    this.name = 'MissingRefreshTokenError'
+  }
+}
+
+export function isAuthenticationRejected(error: unknown) {
+  return error instanceof MissingRefreshTokenError || (error instanceof ApiError && (error.status === 401 || error.status === 403))
+}
 
 export function getTokenExpiresAt(token: string) {
   try {
@@ -32,7 +44,7 @@ export function clearStoredSession() {
 
 export async function refreshSession(): Promise<User> {
   const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY)
-  if (!refreshToken) throw new Error('登录已过期')
+  if (!refreshToken) throw new MissingRefreshTokenError()
   if (refreshRequest) return refreshRequest
 
   refreshRequest = refreshWithToken(refreshToken).finally(() => {
@@ -54,7 +66,7 @@ async function refreshWithToken(refreshToken: string): Promise<User> {
   }
 }
 
-function getStoredUser(): User | null {
+export function getStoredUser(): User | null {
   const rawUser = localStorage.getItem(CURRENT_USER_KEY)
   if (!rawUser) return null
   try {
