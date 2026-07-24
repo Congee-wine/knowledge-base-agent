@@ -30,6 +30,7 @@ export function AppLayout({ user, onLogout }: Props) {
   const [collapsed, setCollapsed] = useState(false)
   const agentsQuery = useAgents()
   const entryQuery = useChatEntry()
+  const isAgentWorkbench = /^\/app\/agents\/[^/]+\/edit$/.test(location.pathname)
 
   const handleLogout = async () => {
     await logout()
@@ -44,6 +45,10 @@ export function AppLayout({ user, onLogout }: Props) {
     if (right.kind === 'builtin') return 1
     return Date.parse(right.updatedAt) - Date.parse(left.updatedAt)
   })
+
+  if (isAgentWorkbench) {
+    return <main className="h-screen overflow-hidden bg-white text-slate-700"><Outlet /></main>
+  }
 
   return (
     <main className="flex h-screen overflow-hidden bg-white text-slate-700">

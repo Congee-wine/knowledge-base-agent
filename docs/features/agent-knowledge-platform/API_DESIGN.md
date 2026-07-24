@@ -14,6 +14,11 @@
 - 认证：Bearer access token；仅拥有者可读取个人智能体头像。
 - 成功返回私有对象二进制内容与真实图片 Content-Type；不返回可公开访问的 MinIO URL。
 
+## 工作台保存
+
+- 工作台复用 `PATCH /api/agents/{agentId}`，保存 `description`、`systemPrompt`、`welcomeMessage`、`presetQuestions`、`allowConversationUpload` 和 `allowNetworkAccess`。
+- 本阶段不新增知识集绑定、公开访问、语音热词或嵌入网站接口；这些字段须随各自的后端能力及权限模型一并设计。
+
 ## 1. 通用约定
 
 - 基础路径：`/api`。

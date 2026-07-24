@@ -13,8 +13,8 @@ class AgentWriteFields(BaseModel):
     system_prompt: str | None = Field(default=None, max_length=8000, alias="systemPrompt")
     welcome_message: str | None = Field(default=None, max_length=1000, alias="welcomeMessage")
     preset_questions: list[str] = Field(default_factory=list, max_length=10, alias="presetQuestions")
-    allow_conversation_upload: bool = Field(default=False, alias="allowConversationUpload")
-    allow_network_access: bool = Field(default=False, alias="allowNetworkAccess")
+    allow_conversation_upload: bool = Field(default=True, alias="allowConversationUpload")
+    allow_network_access: bool = Field(default=True, alias="allowNetworkAccess")
     interaction_type: Literal["text", "voice", "digital_human"] = Field(default="text", alias="interactionType")
 
 
