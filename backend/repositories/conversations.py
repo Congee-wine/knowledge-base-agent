@@ -113,6 +113,53 @@ def _append_echo_messages(
         VALUES (%s, %s, 'user', %s, 'complete', %s) RETURNING *""",
         (user_message_id, conversation_id, content, user_message_at),
     )
+
+
+def start_stream_generation(
+    user_id: str, agent_id: str, conversation_id: str | None, content: str, request_id: str
+) -> tuple[Mapping[str, Any], Mapping[str, Any], Mapping[str, Any], bool] | None:
+    now = datetime.now(timezone.utc)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """SELECT conversations.*, messages.id AS assistant_message_id, messages.content AS assistant_content,
+                messages.generation_status AS assistant_generation_status FROM messages
+                JOIN conversations ON conversations.id = messages.conversation_id
+                WHERE messages.client_request_id = %s AND conversations.owner_user_id = %s""",
+                (request_id, user_id),
+            )
+            existing = cursor.fetchone()
+            if existing is not None:
+                cursor.execute("SELECT * FROM messages WHERE conversation_id = %s AND role = 'user' ORDER BY created_at DESC LIMIT 1", (existing["id"],))
+                user_message = cursor.fetchone()
+                cursor.execute("SELECT * FROM messages WHERE id = %s", (existing["assistant_message_id"],))
+                return existing, user_message, cursor.fetchone(), False
+            if conversation_id is None:
+                cursor.execute(
+                    """INSERT INTO conversations (id, owner_user_id, agent_id, title, is_draft, created_at, updated_at)
+                    VALUES (%s, %s, %s, %s, false, %s, %s) RETURNING *""",
+                    (uuid.uuid4(), user_id, agent_id, content[:50], now, now),
+                )
+                conversation = cursor.fetchone()
+            else:
+                conversation = _find_active_conversation(cursor, user_id, conversation_id, agent_id)
+                if conversation is None:
+                    return None
+            user_id_value, assistant_id = uuid.uuid4(), uuid.uuid4()
+            cursor.execute("""INSERT INTO messages (id, conversation_id, role, content, generation_status, created_at)
+                VALUES (%s, %s, 'user', %s, 'complete', %s) RETURNING *""", (user_id_value, conversation["id"], content, now))
+            user_message = cursor.fetchone()
+            cursor.execute("""INSERT INTO messages (id, conversation_id, role, content, generation_status, client_request_id, created_at)
+                VALUES (%s, %s, 'assistant', '', 'generating', %s, %s) RETURNING *""", (assistant_id, conversation["id"], request_id, now))
+            assistant_message = cursor.fetchone()
+            return conversation, user_message, assistant_message, True
+
+
+def finish_stream_generation(assistant_message_id: str, content: str, status: str) -> Mapping[str, Any] | None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("""UPDATE messages SET content = %s, generation_status = %s WHERE id = %s RETURNING *""", (content, status, assistant_message_id))
+            return cursor.fetchone()
     user_message = cursor.fetchone()
     cursor.execute(
         """INSERT INTO messages (id, conversation_id, role, content, generation_status, created_at)

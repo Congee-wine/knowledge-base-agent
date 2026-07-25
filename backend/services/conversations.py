@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from typing import Any
 
 from repositories import agents as agent_repository
@@ -9,6 +9,8 @@ from schemas.agents import AgentResponse
 from schemas.conversations import ConversationDetailResponse, ConversationResponse, EchoMessageResponse, MessageResponse
 from services.agents import get_agent
 from services.errors import not_found
+from services.agent_runtime import ModelMessage, stream_answer
+from integrations.deepseek import DeepSeekError
 
 
 def create_conversation(user_id: str, agent_id: str, title: str | None) -> tuple[ConversationResponse, bool]:
@@ -59,6 +61,32 @@ def send_echo_message(
         user_message=_message_response(user_message),
         assistant_message=_message_response(assistant_message),
     )
+
+
+def stream_message(user_id: str, agent_id: str, conversation_id: str | None, content: str, request_id: str) -> Iterator[dict[str, object]]:
+    agent = _ensure_active_agent(user_id, agent_id)
+    result = conversation_repository.start_stream_generation(user_id, agent_id, conversation_id, content, request_id)
+    if result is None:
+        raise not_found()
+    conversation, user_message, assistant_message, created = result
+    yield {"type": "message_start", "conversationId": str(conversation["id"]), "userMessageId": str(user_message["id"]), "assistantMessageId": str(assistant_message["id"])}
+    if not created:
+        if assistant_message["generation_status"] == "complete":
+            yield {"type": "answer_delta", "content": assistant_message["content"]}
+            yield {"type": "message_end", "messageId": str(assistant_message["id"]), "generationStatus": "complete"}
+        return
+    history: list[ModelMessage] = []
+    answer = ""
+    try:
+        yield {"type": "status", "stage": "generating", "text": "正在生成回答"}
+        for delta in stream_answer(agent.system_prompt, history, content):
+            answer += delta
+            yield {"type": "answer_delta", "content": delta}
+        conversation_repository.finish_stream_generation(str(assistant_message["id"]), answer, "complete")
+        yield {"type": "message_end", "messageId": str(assistant_message["id"]), "generationStatus": "complete"}
+    except DeepSeekError:
+        conversation_repository.finish_stream_generation(str(assistant_message["id"]), answer, "failed")
+        yield {"type": "error", "code": "MODEL_UNAVAILABLE", "message": "模型服务暂时不可用", "retryable": True}
 
 
 def _ensure_active_agent(user_id: str, agent_id: str) -> AgentResponse:

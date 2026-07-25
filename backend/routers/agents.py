@@ -1,7 +1,8 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
-from fastapi.responses import Response as FastApiResponse
+from fastapi.responses import Response as FastApiResponse, StreamingResponse
+import json
 
 from dependencies import get_current_user
 from schemas.agents import (
@@ -13,10 +14,18 @@ from schemas.agents import (
     UpdateAgentRequest,
 )
 from schemas.auth import UserResponse
+from schemas.streaming import PreviewStreamRequest
 from services import agents as agent_service
+from services import agent_preview
 
 
 router = APIRouter(prefix="/api", tags=["agents"])
+
+
+def _preview_sse(events, request_id: str):
+    for sequence, payload in enumerate(events, start=1):
+        data = {"requestId": request_id, "sequence": sequence, **payload}
+        yield f"id: {request_id}:{sequence}\nevent: {data['type']}\ndata: {json.dumps(data)}\n\n"
 
 
 @router.get("/chat/entry", response_model=ChatEntryResponse)
@@ -68,6 +77,12 @@ def read_agent(agent_id: str, current_user: Annotated[UserResponse, Depends(get_
 @router.patch("/agents/{agent_id}", response_model=AgentResponse)
 def update_agent(agent_id: str, data: UpdateAgentRequest, current_user: Annotated[UserResponse, Depends(get_current_user)]) -> AgentResponse:
     return agent_service.update_agent(current_user.id, agent_id, data)
+
+
+@router.post("/agents/{agent_id}/preview/messages:stream")
+def stream_agent_preview(agent_id: str, data: PreviewStreamRequest, current_user: Annotated[UserResponse, Depends(get_current_user)]) -> StreamingResponse:
+    events = agent_preview.stream_preview(current_user.id, agent_id, data)
+    return StreamingResponse(_preview_sse(events, data.request_id), media_type="text/event-stream")
 
 
 @router.delete("/agents/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)

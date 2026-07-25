@@ -1,5 +1,44 @@
 # 开发日志
 
+## 2026-07-25：确认智能体推理摘要展示策略
+
+### 任务目标
+
+确认真实模型问答、知识库检索和联网能力向用户展示过程的产品边界。
+
+### 实现内容
+
+- 确认展示简短、受控的模型推理摘要。
+- 确认知识库检索、联网搜索和文件处理以独立执行步骤、状态和引用呈现，不展示完整原始思维链。
+- 更新共享运行与预览设计、问题记录和技术决策。
+
+### 接口或数据变化
+
+无代码或 API 变更；后续运行结果会预留 `reasoningSummary` 与 `executionSteps`。
+
+### 验证情况
+
+- 设计确认阶段，无运行代码或测试变更。
+
+## 2026-07-25：共享智能体运行与实时预览设计
+
+### 任务目标
+
+为编辑页右侧预览和正式聊天定义同一套真实模型运行链路，避免预览继续停留在静态展示或伪造回答。
+
+### 实现内容
+
+- 新增设计文档 `RUNTIME_PREVIEW_DESIGN.md`，定义共享运行服务、DeepSeek 适配、正式持久化聊天和无持久化预览的边界。
+- 明确知识库、联网和对话上传分别依赖的后续能力与实施顺序。
+
+### 接口或数据变化
+
+- 规划新增 `POST /api/agents/{agentId}/preview/messages`；当前未修改代码、接口或数据库。
+
+### 验证情况
+
+- 设计阶段，无运行代码或测试变更。
+
 ## 2026-07-25：修复预设问题实时预览丢失条目
 
 ### 任务目标
@@ -1278,3 +1317,65 @@ Ant Design X 仅承担 AI 交互展示，避免与业务接口、鉴权和状态
 ### 遗留问题
 
 - 无代码级阻塞；仍需完成浏览器人工验收。
+# 2026-07-25：流式聊天前后端首次联调
+
+### 任务目标
+
+让正式聊天和智能体编辑预览都调用同一套 DeepSeek 流式运行能力，而不是继续使用回显或静态提示。
+
+### 实现内容
+
+- 前端新增 POST SSE 消费逻辑与 `useStreamingChat`，按 `requestId` 和递增 `sequence` 忽略重复事件。
+- 正式聊天页改为实时追加模型 `answer_delta`；编辑页预览改为将当前草稿配置提交到预览流接口，消息仅保留在页面内存。
+- 应用 `20260725_0006` 迁移，为正式消息增加请求幂等字段及 `generating` 状态。
+
+### 主要文件
+
+- `frontend/src/api/chat.ts`：流式请求与 SSE 帧解析。
+- `frontend/src/features/chat/hooks/useStreamingChat.ts`：前端流式消息状态。
+- `frontend/src/pages/ChatPage.tsx`：正式聊天入口接线。
+- `frontend/src/features/agents/components/AgentEditorPreview.tsx`：草稿预览入口接线。
+
+### 接口或数据变化
+
+- 使用 `POST /api/conversations/messages:stream` 和 `POST /api/agents/{agentId}/preview/messages:stream`。
+- 已执行 Alembic `20260725_0006`。
+
+### 验证情况
+
+- 后端相关模块 `py_compile` 通过。
+- 前端 `pnpm build` 通过。
+- 尚未完成浏览器真实模型请求、停止生成、断线续流与 Redis 缓冲验证。
+
+### 遗留问题
+
+- 阶段 A 仍为进行中，不应作为完整流式聊天能力验收。
+
+# 2026-07-25：流式聊天渲染与工作流纠正
+
+### 任务目标
+
+纠正流式聊天加载态、Markdown 渲染与模型运行架构，使阶段 A 不再以直接 HTTP 调用替代智能体工作流边界。
+
+### 实现内容
+
+- 恢复生成中空助手消息的三点 loading，并展示 SSE `status` 文案。
+- 助手气泡改用项目已安装的 `@ant-design/x-markdown`，支持流式 Markdown 安全渲染。
+- DeepSeek 改由 LangChain `ChatOpenAI` 的 OpenAI 兼容适配调用；LangGraph 执行 `prepare_input -> model` 最小运行图。
+
+### 接口或数据变化
+
+- 不新增数据库迁移或 HTTP 路由。
+- 新增生产依赖：`langchain-core`、`langchain-openai`、`langgraph`。
+
+### 验证情况
+
+- LangGraph 图编译通过。
+- 使用已配置 DeepSeek 完成最小真实调用，返回 `runtime-ok`。
+- 后端模块编译与应用导入通过；`http://127.0.0.1:8001/docs` 可访问。
+- 前端 `pnpm build` 通过。
+
+### 遗留问题
+
+- 停止生成、Redis 续流、幂等回放和浏览器端人工验收未完成。
+- 受控处理摘要、检索步骤和引用仍是后续阶段，当前不展示模型原始思维链。

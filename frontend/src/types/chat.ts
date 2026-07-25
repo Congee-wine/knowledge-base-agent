@@ -28,7 +28,7 @@ export type ChatMessage = {
   id: string
   role: 'user' | 'assistant'
   content: string
-  generationStatus: 'complete' | 'interrupted' | 'failed'
+  generationStatus: 'generating' | 'complete' | 'interrupted' | 'failed'
   createdAt: string
 }
 

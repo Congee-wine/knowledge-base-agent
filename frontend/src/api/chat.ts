@@ -1,6 +1,27 @@
-import { request } from './http'
+import { getApiBaseUrl, request } from './http'
 import { getStoredAccessToken } from '../lib/auth'
 import type { ChatAgent, Conversation, ConversationDetail, SendMessageResult } from '../types/chat'
+
+export type ChatStreamEvent = {
+  type: 'message_start' | 'status' | 'answer_delta' | 'message_end' | 'error'
+  requestId: string
+  sequence: number
+  content?: string
+  conversationId?: string
+  userMessageId?: string
+  assistantMessageId?: string
+  messageId?: string
+  generationStatus?: 'complete' | 'interrupted'
+  message?: string
+  text?: string
+}
+
+type StreamOptions = {
+  path: string
+  body: unknown
+  signal?: AbortSignal
+  onEvent: (event: ChatStreamEvent) => void
+}
 
 function authorizationHeader() {
   const accessToken = getStoredAccessToken()
@@ -40,4 +61,34 @@ export function sendMessage(input: { agentId: string; conversationId: string | n
     headers: authorizationHeader(),
     method: 'POST',
   })
+}
+
+export async function streamChat(options: StreamOptions): Promise<void> {
+  const response = await fetch(`${getApiBaseUrl()}${options.path}`, {
+    body: JSON.stringify(options.body),
+    headers: { ...authorizationHeader(), 'Content-Type': 'application/json' },
+    method: 'POST',
+    signal: options.signal,
+  })
+  if (!response.ok || response.body === null) {
+    const data: unknown = await response.json().catch(() => undefined)
+    const detail = typeof data === 'object' && data !== null && 'detail' in data ? data.detail : undefined
+    throw new Error(typeof detail === 'string' ? detail : '流式请求未能建立')
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let pending = ''
+  while (true) {
+    const { done, value } = await reader.read()
+    pending += decoder.decode(value, { stream: !done })
+    const frames = pending.split('\n\n')
+    pending = frames.pop() ?? ''
+    for (const frame of frames) {
+      const dataLine = frame.split('\n').find(line => line.startsWith('data: '))
+      if (!dataLine) continue
+      options.onEvent(JSON.parse(dataLine.slice(6)) as ChatStreamEvent)
+    }
+    if (done) return
+  }
 }
