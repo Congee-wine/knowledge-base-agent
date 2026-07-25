@@ -156,8 +156,10 @@ export function AgentEditorPage() {
         initialValues={toFormValues(agent)}
         layout="vertical"
         onFinish={(values) => void submit(values)}
-        onValuesChange={(changedValues) =>
-          setPreviewValues((current) => (current ? { ...current, ...changedValues } : current))
+        onValuesChange={() =>
+          setPreviewValues((current) =>
+            current ? { ...current, ...form.getFieldsValue(true) } : current,
+          )
         }
       >
         <aside className="agent-workbench__settings">
