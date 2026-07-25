@@ -1,9 +1,8 @@
 import { EllipsisOutlined, StarFilled, UserOutlined } from '@ant-design/icons'
 import { Button, Dropdown, Tag } from 'antd'
 import type { MenuProps } from 'antd'
-import { useEffect, useState } from 'react'
-import { getAgentAvatar } from '../../../api/agents'
 import type { ChatAgent } from '../../../types/chat'
+import { AgentAvatar } from './AgentAvatar'
 
 type Props = {
   agent: ChatAgent
@@ -12,31 +11,6 @@ type Props = {
   onEdit: (agent: ChatAgent) => void
   onOpen: (agent: ChatAgent) => void
   onSetDefault: (agent: ChatAgent) => void
-}
-
-function agentAvatar(agent: ChatAgent) {
-  return agent.avatarKey?.slice(0, 1).toUpperCase() ?? agent.name.slice(0, 1).toUpperCase()
-}
-
-function AgentAvatar({ agent }: { agent: ChatAgent }) {
-  const [imageUrl, setImageUrl] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!agent.avatarKey?.startsWith('agent-avatars/')) return
-    let active = true
-    let objectUrl: string | null = null
-    void getAgentAvatar(agent.id).then(blob => {
-      objectUrl = URL.createObjectURL(blob)
-      if (active) setImageUrl(objectUrl)
-      else URL.revokeObjectURL(objectUrl)
-    }).catch(() => undefined)
-    return () => {
-      active = false
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
-    }
-  }, [agent.avatarKey, agent.id])
-
-  return <span className="agent-card__avatar" aria-hidden="true">{imageUrl ? <img alt="" src={imageUrl} /> : agentAvatar(agent)}</span>
 }
 
 function formatUpdatedAt(updatedAt: string) {
@@ -62,7 +36,7 @@ export function AgentCard({ agent, isDefault, onDelete, onEdit, onOpen, onSetDef
       <div className="agent-card__content">
         <h2 className="agent-card__title">{agent.name}</h2>
         <p className="agent-card__description">{agent.description || '暂无描述'}</p>
-        <AgentAvatar agent={agent} />
+        <AgentAvatar agent={agent} className="agent-card__avatar" imageClassName="agent-card__avatar-image" />
         <div className="agent-card__labels">
           <Tag bordered={false}>会话智能体</Tag>
           {isBuiltin ? <><Tag bordered={false} color="green">官方应用</Tag><Tag bordered={false} color="blue">已开通</Tag></> : <Tag bordered={false} color="blue">我的</Tag>}

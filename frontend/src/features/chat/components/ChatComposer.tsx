@@ -12,7 +12,7 @@ type Props = {
   onSubmit: (content: string) => void
 }
 
-export function ChatComposer({ agent, value, sending, onChange, onSubmit }: Props) {
+export function ChatComposerSurface({ agent, value, sending, onChange, onSubmit }: Props) {
   const [content, setContent] = useState(value)
   const [useKnowledgeBase, setUseKnowledgeBase] = useState(true)
   useEffect(() => { setContent(value) }, [value])
@@ -25,32 +25,38 @@ export function ChatComposer({ agent, value, sending, onChange, onSubmit }: Prop
   }
 
   return (
-    <div className="mt-auto w-full max-w-[810px] px-8 pb-2 pt-6 lg:ml-[18%] lg:px-0">
-      <Sender
-        allowSpeech
-        autoSize={{ minRows: 1, maxRows: 4 }}
-        className="prototype-chat-sender"
-        footer={actionNode => (
-          <div className="flex items-center justify-between gap-4 pt-1">
-            <div className="flex flex-wrap items-center gap-2">
-              {isBuiltin && <Button size="small" type={useKnowledgeBase ? 'primary' : 'default'} onClick={() => setUseKnowledgeBase(enabled => !enabled)}>全部资料</Button>}
-              <Button icon={<RobotOutlined />} size="small" onClick={notifyUnsupported}>Agent</Button>
-              {(isBuiltin || agent.allowNetworkAccess) && <Button aria-label="联网" icon={<GlobalOutlined />} size="small" onClick={notifyUnsupported} />}
-              {(isBuiltin || agent.allowConversationUpload) && <Button aria-label="上传文件" icon={<PaperClipOutlined />} size="small" onClick={notifyUnsupported} />}
-            </div>
-            <div className="prototype-chat-actions shrink-0">{actionNode}</div>
+    <Sender
+      allowSpeech
+      autoSize={{ minRows: 1, maxRows: 4 }}
+      className="prototype-chat-sender"
+      footer={actionNode => (
+        <div className="flex items-center justify-between gap-4 pt-1">
+          <div className="flex flex-wrap items-center gap-2">
+            {isBuiltin && <Button size="small" type={useKnowledgeBase ? 'primary' : 'default'} onClick={() => setUseKnowledgeBase(enabled => !enabled)}>全部资料</Button>}
+            <Button icon={<RobotOutlined />} size="small" onClick={notifyUnsupported}>Agent</Button>
+            {(isBuiltin || agent.allowNetworkAccess) && <Button aria-label="联网" icon={<GlobalOutlined />} size="small" onClick={notifyUnsupported} />}
+            {(isBuiltin || agent.allowConversationUpload) && <Button aria-label="上传文件" icon={<PaperClipOutlined />} size="small" onClick={notifyUnsupported} />}
           </div>
-        )}
-        loading={sending}
-        placeholder="基于知识库提问，shift+enter换行"
-        suffix={false}
-        value={content}
-        onChange={nextValue => {
-          setContent(nextValue)
-          onChange(nextValue)
-        }}
-        onSubmit={submitMessage}
-      />
+          <div className="prototype-chat-actions shrink-0">{actionNode}</div>
+        </div>
+      )}
+      loading={sending}
+      placeholder="基于知识库提问，shift+enter换行"
+      suffix={false}
+      value={content}
+      onChange={nextValue => {
+        setContent(nextValue)
+        onChange(nextValue)
+      }}
+      onSubmit={submitMessage}
+    />
+  )
+}
+
+export function ChatComposer(props: Props) {
+  return (
+    <div className="mt-auto w-full max-w-[810px] px-8 pb-2 pt-6 lg:ml-[18%] lg:px-0">
+      <ChatComposerSurface {...props} />
       <p className="mt-2 text-center text-xs text-slate-300">内容由AI生成，仅供参考</p>
     </div>
   )

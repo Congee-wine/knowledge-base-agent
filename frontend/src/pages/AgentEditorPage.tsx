@@ -1,22 +1,21 @@
 import {
   ArrowLeftOutlined,
   DeleteOutlined,
-  GlobalOutlined,
-  PaperClipOutlined,
   PlusOutlined,
   SaveOutlined,
-  UserOutlined,
 } from '@ant-design/icons'
-import { Button, Form, Input, Radio, Result, Spin, Tag, message } from 'antd'
+import { Button, Form, Input, Radio, Result, Spin, message } from 'antd'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { getAgentAvatar, updateAgent } from '../api/agents'
+import { updateAgent } from '../api/agents'
 import { agentKeys } from '../features/agents/agentKeys'
+import { AgentAvatar } from '../features/agents/components/AgentAvatar'
+import { AgentEditorPreview } from '../features/agents/components/AgentEditorPreview'
 import { SystemPromptEditor } from '../features/agents/components/SystemPromptEditor'
 import { useAgent } from '../features/agents/hooks/useAgent'
 import { routes } from '../routes/paths'
-import type { AgentFormValues } from '../types/agents'
+import type { AgentFormValues, AgentListResponse } from '../types/agents'
 import type { ChatAgent } from '../types/chat'
 
 function toFormValues(agent: ChatAgent): AgentFormValues {
@@ -48,86 +47,6 @@ function toPayload(values: AgentFormValues, agent: ChatAgent): AgentFormValues {
     systemPrompt: values.systemPrompt?.trim() || null,
     welcomeMessage: values.welcomeMessage?.trim() || null,
   }
-}
-
-function AgentPreview({
-  agentId,
-  values,
-}: {
-  agentId: string
-  values: AgentFormValues
-}) {
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!values.avatarKey?.startsWith('agent-avatars/')) {
-      setAvatarUrl(null)
-      return
-    }
-    let active = true
-    let objectUrl: string | null = null
-    void getAgentAvatar(agentId)
-      .then((blob) => {
-        objectUrl = URL.createObjectURL(blob)
-        if (active) setAvatarUrl(objectUrl)
-        else URL.revokeObjectURL(objectUrl)
-      })
-      .catch(() => undefined)
-    return () => {
-      active = false
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
-    }
-  }, [values.avatarKey])
-
-  const welcomeMessage =
-    values.welcomeMessage ||
-    `你好，我是${values.name || '智能体'}，有什么可以帮助你？`
-  return (
-    <aside className="agent-workbench__preview">
-      <div className="agent-workbench__preview-welcome">
-        <div className="agent-workbench__preview-avatar">
-          {avatarUrl ? <img alt="" src={avatarUrl} /> : <UserOutlined />}
-        </div>
-        <h2>{values.name || '未命名智能体'}</h2>
-        <p>{welcomeMessage}</p>
-        {values.presetQuestions.length > 0 && (
-          <div className="agent-workbench__questions">
-            {values.presetQuestions.map((question, index) => (
-              <Tag key={`${question}-${index}`}>{question}</Tag>
-            ))}
-          </div>
-        )}
-      </div>
-      <div className="agent-workbench__composer-preview">
-        <span>请将遇到的问题告诉我</span>
-        <div>
-          {values.allowConversationUpload && (
-            <Button
-              className="agent-workbench__preview-entry"
-              icon={<PaperClipOutlined />}
-              size="small"
-              type="text"
-            >
-              上传文件
-            </Button>
-          )}
-          {values.allowNetworkAccess && (
-            <Button
-              className="agent-workbench__preview-entry"
-              icon={<GlobalOutlined />}
-              size="small"
-              type="text"
-            >
-              联网搜索
-            </Button>
-          )}
-          <Button disabled size="small" type="primary">
-            发送
-          </Button>
-        </div>
-      </div>
-    </aside>
-  )
 }
 
 export function AgentEditorPage() {
@@ -182,6 +101,15 @@ export function AgentEditorPage() {
       const savedValues = toFormValues(savedAgent)
       form.setFieldsValue(savedValues)
       setPreviewValues(savedValues)
+      queryClient.setQueryData(agentKeys.detail(savedAgent.id), savedAgent)
+      queryClient.setQueryData<AgentListResponse>(agentKeys.all, (current) =>
+        current
+          ? { ...current, items: current.items.map((item) => (item.id === savedAgent.id ? savedAgent : item)) }
+          : current,
+      )
+      queryClient.setQueryData<{ agent: ChatAgent }>(agentKeys.entry, (current) =>
+        current?.agent.id === savedAgent.id ? { ...current, agent: savedAgent } : current,
+      )
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: agentKeys.all }),
         queryClient.invalidateQueries({ queryKey: agentKeys.entry }),
@@ -210,7 +138,7 @@ export function AgentEditorPage() {
           返回
         </Button>
         <div className="agent-workbench__title">
-          <span>{agent.name.slice(0, 1).toUpperCase()}</span>
+          <AgentAvatar agent={agent} className="agent-workbench__title-avatar" imageClassName="agent-workbench__title-avatar-image" />
           <strong>{agent.name}</strong>
         </div>
         <Button
@@ -228,7 +156,9 @@ export function AgentEditorPage() {
         initialValues={toFormValues(agent)}
         layout="vertical"
         onFinish={(values) => void submit(values)}
-        onValuesChange={(_, values) => setPreviewValues(values)}
+        onValuesChange={(changedValues) =>
+          setPreviewValues((current) => (current ? { ...current, ...changedValues } : current))
+        }
       >
         <aside className="agent-workbench__settings">
           <Form.Item label="预置问题">
@@ -363,9 +293,9 @@ export function AgentEditorPage() {
           </Form.Item>
         </main>
         {previewValues && (
-          <AgentPreview
-            agentId={agent.id}
-            values={{
+          <AgentEditorPreview
+            agent={{
+              ...agent,
               ...previewValues,
               allowConversationUpload:
                 allowConversationUpload ??

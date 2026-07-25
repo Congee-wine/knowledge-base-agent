@@ -1,5 +1,46 @@
 # 开发日志
 
+## 2026-07-25：统一智能体配置展示与编辑预览
+
+### 任务目标
+
+修复编辑页、列表卡片、顶部标题和侧栏头像/名称来源不一致的问题；明确区分 AI 管家与自建智能体的欢迎区，并让 AI 管家的预设问题由数据库提供。
+
+### 实现内容
+
+- 新增共享头像组件，统一按 `avatarKey` 读取受保护头像 Blob；无头像或读取失败时回退到名称首字。
+- 自建智能体聊天欢迎区和编辑页右侧预览复用同一头像欢迎组件；预览输入框复用聊天输入框主体，上传与联网入口随当前草稿配置变化。
+- 编辑表单改为按变更字段合并预览草稿，避免单字段更新覆盖名称和头像；保存后立即更新智能体详情、列表和默认入口缓存。
+- 内置 AI 管家继续使用既有欢迎区样式，删除前端硬编码预设问题；新增 Alembic 迁移写入内置 AI 管家的预设问题种子数据。
+
+### 主要文件
+
+- `frontend/src/features/agents/components/AgentAvatar.tsx`：共享受保护头像加载与回退展示。
+- `frontend/src/features/agents/components/PersonalAgentWelcome.tsx`：自建智能体统一欢迎区。
+- `frontend/src/features/agents/components/AgentEditorPreview.tsx`：编辑工作台的实时预览组合。
+- `frontend/src/features/chat/components/ChatWelcome.tsx`、`ChatComposer.tsx`：区分内置/自建欢迎区并复用输入主体。
+- `frontend/src/pages/AgentEditorPage.tsx`、`frontend/src/layouts/AppLayout.tsx`、`AgentCard.tsx`：消除各处独立头像与缓存状态。
+- `backend/migrations/versions/20260725_0005_builtin_agent_preset_questions.py`：补齐内置 AI 管家预设问题数据。
+
+### 技术方案
+
+展示层只接收同一份 `ChatAgent` 配置，头像读取收敛为共享组件；表单草稿通过增量合并保持非表单字段。预览复用真实输入 UI，但因模型和消息工作流尚未接入，发送只给出明确提示，不伪造会话或回答。
+
+### 接口或数据变化
+
+- 无新增 HTTP API 或响应字段。
+- 新增数据库数据迁移，向现有 `agent_preset_questions` 表插入内置 AI 管家问题；本地 PostgreSQL 已执行 `alembic upgrade head`。
+
+### 验证情况
+
+- 通过：在 `frontend/` 执行 `pnpm exec tsc --noEmit`。
+- 通过：本地 PostgreSQL 已执行 `alembic upgrade head`，查询确认内置 AI 管家有 7 条预设问题。
+- 待执行：浏览器端验证头像上传、保存后缓存同步、两类欢迎区和预览入口。
+
+### 遗留问题
+
+- 当前预览不能发送真实消息；需待模型、会话与工具能力接入后新增受控的预览会话接口。
+
 ## 2026-07-24：更正 UIW 单栏配置
 
 ### 任务目标

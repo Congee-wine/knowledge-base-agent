@@ -10,6 +10,7 @@ import {
 } from '@ant-design/icons'
 import { Avatar, Button, Input } from 'antd'
 import { useAgents } from '../features/agents/hooks/useAgents'
+import { AgentAvatar } from '../features/agents/components/AgentAvatar'
 import { useChatEntry } from '../features/chat/hooks/useChatEntry'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { logout } from '../lib/auth'
@@ -94,7 +95,7 @@ export function AppLayout({ user, onLogout }: Props) {
             <div className="mt-3 border-t border-slate-200 px-4 pt-4">
               <p className="mb-3 text-sm text-slate-500">我的智能体</p>
               {sidebarAgents.map(agent => <NavLink key={agent.id} className={({ isActive }) => `mb-1 flex h-12 items-center gap-3 rounded-xl px-2 text-[15px] ${isActive || (agent.kind === 'builtin' && location.pathname === routes.app.chat) ? 'bg-indigo-50 text-[#3665e6]' : 'text-slate-600 hover:bg-slate-100'}`} to={agent.kind === 'builtin' ? routes.app.chat : routes.app.chatAgent(agent.id)}>
-                <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-cyan-300 to-indigo-500 text-base text-white">{agent.name.slice(0, 1)}</span>
+                <AgentAvatar agent={agent} className="grid h-8 w-8 place-items-center overflow-hidden rounded-lg bg-gradient-to-br from-cyan-300 to-indigo-500 text-base text-white" imageClassName="h-full w-full object-cover" />
                 <span className="truncate">{agent.name}</span>
               </NavLink>)}
             </div>
