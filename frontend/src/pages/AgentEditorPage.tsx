@@ -13,6 +13,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { getAgentAvatar, updateAgent } from '../api/agents'
 import { agentKeys } from '../features/agents/agentKeys'
+import { SystemPromptEditor } from '../features/agents/components/SystemPromptEditor'
 import { useAgent } from '../features/agents/hooks/useAgent'
 import { routes } from '../routes/paths'
 import type { AgentFormValues } from '../types/agents'
@@ -358,12 +359,7 @@ export function AgentEditorPage() {
             name="systemPrompt"
             rules={[{ max: 8000, message: '系统提示词不能超过 8000 个字符' }]}
           >
-            <Input.TextArea
-              className="agent-workbench__prompt-input"
-              maxLength={8000}
-              placeholder="请编写提示词，例如：你是一名专业的销售助手……"
-              showCount
-            />
+            <SystemPromptEditor />
           </Form.Item>
         </main>
         {previewValues && (

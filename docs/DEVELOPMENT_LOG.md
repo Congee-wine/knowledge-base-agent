@@ -1,5 +1,163 @@
 # 开发日志
 
+## 2026-07-24：更正 UIW 单栏配置
+
+### 任务目标
+
+按 UIW 组件原生配置固定单栏编辑模式，避免将默认双栏布局误判为不可关闭。
+
+### 实现内容
+
+- 恢复 `@uiw/react-md-editor/nohighlight` 编辑器本体，设置受控 `preview="edit"` 作为编辑态。
+- 编辑区只配置设计图要求的 Markdown 命令；不添加 `codeLive`，因此用户无法进入双栏模式。
+- 自定义预览按钮只在 `edit` 和 `preview` 间切换，预览内容和编辑内容仍使用同一表单值。
+- 为中栏的 `Form.Item`、表单控制容器和编辑器壳显式设置 `width: 100%`，修正其收缩为工具栏内容宽度后导致预览/帮助按钮被挤出的布局问题。
+- 为自定义帮助和预览命令补充 `keyCommand`；UIW 工具栏会跳过缺少该字段的命令，因此这是按钮未渲染的直接原因。
+- 将 Ant Design 自动生成的 `.ant-form-item-row` 纳入中栏的宽高 flex 链路；它是 `Form.Item` 的直接子元素，未拉伸会使编辑器只占用 row 的内容宽度并在右侧留下空白。
+- 将 UIW 工具栏的两组命令从 `space-between` 改为左对齐；`extraCommands`（帮助、预览）应紧跟表格命令，而不是被推到工具栏最右侧。
+- 标题工具使用 UIW 的 `group([heading1, …, heading6])`，而非单个 `heading` 命令；前者才会显示可选择 1–6 级的标题菜单。
+- 覆盖标题菜单项的默认“包裹选区”执行逻辑，改为替换当前行已存在的 `#` 前缀，防止重复选择标题级别时不断叠加井号。
+
+### 主要文件
+
+- `frontend/src/features/agents/components/SystemPromptEditor.tsx`：UIW 单栏编辑器配置、工具栏命令和预览切换。
+- `frontend/src/style.css`：UIW 编辑态和预览态的全高样式。
+- `docs/DECISIONS.md`、`docs/features/agent-knowledge-platform/*`、`docs/PROJECT_STATUS.md`：更正技术方案。
+
+### 技术方案
+
+UIW 的 `preview="edit"` 原生将输入区宽度设为 100%、预览区宽度设为 0；预览时反向设置。通过只传入指定命令和自定义预览命令，避免默认的三种模式切换按钮暴露双栏模式。
+
+### 接口或数据变化
+
+无。
+
+### 验证情况
+
+- 通过：`pnpm exec tsc --noEmit`。
+- 通过：`git diff --check`。
+- 待执行：浏览器人工验证单栏宽度、文本选中、预览往返和保存回填。
+
+### 遗留问题
+
+- 上次 `pnpm build` 在本机命令超时前未完成，不作为通过记录。
+
+## 2026-07-24：提示词编辑器单栏重构
+
+### 任务目标
+
+消除提示词编辑器默认双栏造成的右侧空白区域，使编辑和预览都在中栏同一编辑区域全宽显示。
+
+### 实现内容
+
+- 移除 `@uiw/react-md-editor` 的完整编辑器外壳，避免继续用 CSS 覆盖其输入/预览双栏布局。
+- 新增原生受控 `textarea` 和自定义工具栏，所有 Markdown 插入操作直接更新既有 `systemPrompt` 表单值。
+- 保留 `@uiw/react-md-editor` 的 Markdown 渲染组件；预览状态在同一内容容器中替换文本框，并可以切回编辑且不丢失内容。
+
+### 主要文件
+
+- `frontend/src/features/agents/components/SystemPromptEditor.tsx`：单栏编辑、Markdown 命令、帮助弹窗和同区预览。
+- `frontend/src/style.css`：全宽全高编辑区和工具栏样式。
+- `docs/DECISIONS.md`、`docs/features/agent-knowledge-platform/*`、`docs/PROJECT_STATUS.md`：更正技术方案与验证状态。
+
+### 技术方案
+
+`@uiw/react-md-editor` 的完整布局内置输入/预览两列，不适合设计图的单栏编辑体验。将编辑职责收回项目组件，依赖仅用于 Markdown 渲染，从布局上消除空白预览列。
+
+### 接口或数据变化
+
+无。继续使用 `systemPrompt` 字符串和既有 8000 字符限制。
+
+### 验证情况
+
+- 通过：`pnpm exec tsc --noEmit`。
+- 待执行：浏览器人工验证单栏全宽、文本选中、工具栏插入、预览往返、保存后回填。
+
+### 遗留问题
+
+- 需要用户在当前浏览器页面刷新后进行视觉和交互复验；在未完成该验证前，不能标记为已验收。
+
+## 2026-07-24：Markdown 编辑器交互与布局修正
+
+### 任务目标
+
+修正 Markdown 编辑器与设计图不一致的尺寸，以及文本选中、预览模式无法返回编辑的问题。
+
+### 实现内容
+
+- 切换到 `@uiw/react-md-editor/nohighlight` 并关闭高亮层，避免选中时文本层和高亮层重叠显示。
+- 将预览改为受控状态切换：编辑时显示预览按钮，预览时显示返回编辑按钮，编辑内容始终保留在同一受控值中。
+- 为编辑器增加全宽、全高 flex 容器，放大工具栏点击区域和图标，使中栏编辑区填满可用空间。
+
+### 主要文件
+
+- `frontend/src/features/agents/components/SystemPromptEditor.tsx`：无高亮编辑器、可逆预览切换。
+- `frontend/src/style.css`：编辑器全高布局和工具栏尺寸。
+- `docs/features/agent-knowledge-platform/CHANGELOG.md`、`docs/PROJECT_STATUS.md`：记录实现修正与待验证项。
+
+### 技术方案
+
+保留 Markdown 原始字符串为唯一表单值；预览只切换渲染视图，不改变内容。无高亮构建移除编辑层的语法高亮叠加，以保证浏览器原生选区稳定显示。
+
+### 接口或数据变化
+
+无。未修改依赖、接口、数据库或迁移。
+
+### 验证情况
+
+- 通过：`pnpm exec tsc --noEmit`。
+- 未执行：浏览器人工验收；需验证选中文本、预览后返回编辑、编辑区全高以及工具栏尺寸。
+
+### 遗留问题
+
+- 无代码级阻塞；需依据浏览器截图继续进行像素级对比。
+
+### 补充更正
+
+- 浏览器截图确认首轮 flex 调整没有覆盖编辑器内部默认的输入区 `50%` 宽度。现已通过编辑/预览状态类显式控制输入区和预览区宽度，避免再次依赖库内部模式类；`pnpm exec tsc --noEmit` 已通过，仍待浏览器复验。
+- 浏览器截图继续确认高度链未建立：工作台原先的 `height: 100%` 没有可靠视口基准，编辑器的百分比高度退化为内容高度。现将工作台设为 `100dvh`，内容网格和表单/编辑器容器按剩余高度拉伸；`pnpm exec tsc --noEmit` 已通过，仍待浏览器复验。
+- DevTools 尺寸检查确认 textarea 实际仅为 `382 × 44`，且编辑态仍保留预览列。现将编辑器内容区扣除工具栏高度，强制 `.w-md-editor-area`、`.w-md-editor-text` 与 textarea 继承 100% 高度；编辑态隐藏预览列、预览态隐藏输入区。`pnpm exec tsc --noEmit` 已通过，仍待浏览器复验。
+
+## 2026-07-24：完整 Markdown 提示词编辑器
+
+### 任务目标
+
+按用户确认的设计图，将智能体配置页中栏的普通系统提示词文本框替换为带完整 Markdown 工具栏和预览的编辑器。
+
+### 实现内容
+
+- 新增 `@uiw/react-md-editor@4.1.1`，使用其原生 Markdown 编辑、表格与预览命令。
+- 新增 `SystemPromptEditor` 组件，提供加粗、斜体、标题、引用、无序列表、有序列表、代码、表格、帮助和预览。
+- 帮助按钮改为站内中文 Markdown 语法弹窗；编辑值继续通过 Ant Design 表单保存为既有 `systemPrompt` 字符串，并限制为 8000 字符。
+- 更新工作台样式，使编辑器占满中栏可用高度并保持设计图的浅色工具栏与无边框编辑区。
+
+### 主要文件
+
+- `frontend/src/features/agents/components/SystemPromptEditor.tsx`：Markdown 编辑器、工具栏与语法帮助弹窗。
+- `frontend/src/pages/AgentEditorPage.tsx`：将 `systemPrompt` 表单控件替换为独立编辑器组件。
+- `frontend/src/style.css`：工作台编辑器布局、工具栏和帮助弹窗样式。
+- `frontend/package.json`、`frontend/pnpm-lock.yaml`：记录新增生产依赖。
+- `docs/features/agent-knowledge-platform/*`、`docs/DECISIONS.md`、`docs/PROJECT_STATUS.md`：同步已确认需求、技术决策、状态和验收条件。
+
+### 技术方案
+
+采用基于 textarea 的 React Markdown 编辑器，而不引入完整代码编辑器内核；使用组件的受控 `value/onChange` 契约与 Ant Design `Form.Item` 集成，避免改变已有 API 和数据结构。
+
+### 接口或数据变化
+
+无。复用 `PATCH /api/agents/{agentId}` 的 `systemPrompt` 字段；未修改数据库或迁移。
+
+### 验证情况
+
+- 通过：`pnpm exec tsc --noEmit`。
+- Vite 已输出成功的生产构建产物（未压缩主 JS 约 2.13 MB），但命令宿主在输出完成后超时回收；不能将该次执行记为完整通过。
+- 未执行：浏览器人工验收、工具栏命令和保存回填的端到端测试。
+
+### 遗留问题
+
+- 新增编辑器使主包显著增大；后续应按路由懒加载编辑器并评估是否使用无高亮构建。
+- 仍需在浏览器中验证各工具按钮、帮助弹窗、预览切换、8000 字符上限及保存后回填。
+
 ## 2026-07-24：智能体三栏搭建工作台
 
 ### 任务目标
