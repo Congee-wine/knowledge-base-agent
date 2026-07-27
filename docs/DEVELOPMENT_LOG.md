@@ -2117,3 +2117,36 @@ Ant Design X 仅承担 AI 交互展示，避免与业务接口、鉴权和状态
 ### 遗留问题
 
 - `chat` 分包仍超过 Vite 的 500 kB 警告阈值；后续可在聊天功能内部继续拆分，不影响当前流式聊天验收。
+# 2026-07-27：Docker Worker 的 SSH 隧道数据库配置隔离
+
+## 任务目标
+
+让本机 API 与 Docker Worker 能通过同一条 SSH 隧道访问远程 PostgreSQL，同时不共用含义不同的 `127.0.0.1` 地址。
+
+## 实现内容
+
+- Worker Compose 服务按顺序加载 `backend/.env` 和 `backend/.env.worker`，后者只覆盖容器运行所需的数据库地址。
+- 忽略本地 `backend/.env.worker`，并提供不含真实凭证的 `.env.worker.example`。
+
+## 主要文件
+
+- `docker-compose.infrastructure.yml`：为 Worker 增加专用环境文件。
+- `backend/.env.worker.example`：Docker Worker 的安全配置模板。
+- `.gitignore`：避免提交 Worker 的本地数据库凭证。
+
+## 技术方案
+
+本机 API 保持经 SSH 隧道访问 `127.0.0.1`；Docker Worker 使用 `host.docker.internal` 访问宿主机同一隧道。Redis 和 MinIO 继续使用 Compose 服务名。
+
+## 接口或数据变化
+
+无。
+
+## 验证情况
+
+- 已确认两个环境文件都配置了数据库地址，且 API 使用本机地址、Worker 使用 `host.docker.internal`。
+- 待执行 Docker Worker 重建后的真实数据库连接验证。
+
+## 遗留问题
+
+- 当前 Worker 只处理文档队列；聊天保持直接 SSE，不恢复 Redis/RQ 续流实现。
