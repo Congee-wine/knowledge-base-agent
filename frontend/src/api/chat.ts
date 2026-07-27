@@ -2,19 +2,22 @@ import { getApiBaseUrl, request } from './http'
 import { getStoredAccessToken } from '../lib/auth'
 import type { ChatAgent, Conversation, ConversationDetail, SendMessageResult } from '../types/chat'
 
-export type ChatStreamEvent = {
-  type: 'message_start' | 'status' | 'answer_delta' | 'message_end' | 'error'
+type StreamEventBase = {
   requestId: string
   sequence: number
-  content?: string
-  conversationId?: string
-  userMessageId?: string
-  assistantMessageId?: string
-  messageId?: string
-  generationStatus?: 'complete' | 'interrupted'
-  message?: string
-  text?: string
 }
+
+export type ChatStreamEvent =
+  | (StreamEventBase & {
+      type: 'message_start'
+      conversationId: string
+      userMessageId: string
+      assistantMessageId: string
+    })
+  | (StreamEventBase & { type: 'status'; text: string })
+  | (StreamEventBase & { type: 'answer_delta'; content: string })
+  | (StreamEventBase & { type: 'message_end'; messageId: string; generationStatus: 'complete' })
+  | (StreamEventBase & { type: 'error'; code?: string; message: string; retryable?: boolean })
 
 type StreamOptions = {
   path: string
@@ -27,6 +30,64 @@ function authorizationHeader() {
   const accessToken = getStoredAccessToken()
   if (!accessToken) throw new Error('登录已过期，请重新登录')
   return { Authorization: `Bearer ${accessToken}` }
+}
+
+function readRequiredString(value: Record<string, unknown>, field: string): string {
+  const result = value[field]
+  if (typeof result !== 'string' || result.length === 0) {
+    throw new Error(`流式事件缺少有效字段：${field}`)
+  }
+  return result
+}
+
+function readString(value: Record<string, unknown>, field: string): string {
+  const result = value[field]
+  if (typeof result !== 'string') {
+    throw new Error(`流式事件缺少字符串字段：${field}`)
+  }
+  return result
+}
+
+function readEvent(payload: unknown): ChatStreamEvent {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    throw new Error('流式事件格式无效')
+  }
+
+  const event = payload as Record<string, unknown>
+  const requestId = readRequiredString(event, 'requestId')
+  const sequence = event.sequence
+  const type = readRequiredString(event, 'type')
+  if (typeof sequence !== 'number' || !Number.isInteger(sequence) || sequence < 1) {
+    throw new Error('流式事件 sequence 无效')
+  }
+
+  if (type === 'message_start') {
+    return {
+      type,
+      requestId,
+      sequence,
+      conversationId: readRequiredString(event, 'conversationId'),
+      userMessageId: readRequiredString(event, 'userMessageId'),
+      assistantMessageId: readRequiredString(event, 'assistantMessageId'),
+    }
+  }
+  if (type === 'status') return { type, requestId, sequence, text: readRequiredString(event, 'text') }
+  if (type === 'answer_delta') return { type, requestId, sequence, content: readString(event, 'content') }
+  if (type === 'message_end') {
+    if (event.generationStatus !== 'complete') throw new Error('流式结束状态无效')
+    return { type, requestId, sequence, messageId: readRequiredString(event, 'messageId'), generationStatus: 'complete' }
+  }
+  if (type === 'error') {
+    return {
+      type,
+      requestId,
+      sequence,
+      message: readRequiredString(event, 'message'),
+      ...(typeof event.code === 'string' ? { code: event.code } : {}),
+      ...(typeof event.retryable === 'boolean' ? { retryable: event.retryable } : {}),
+    }
+  }
+  throw new Error(`不支持的流式事件类型：${type}`)
 }
 
 export function getChatEntry() {
@@ -87,7 +148,7 @@ export async function streamChat(options: StreamOptions): Promise<void> {
     for (const frame of frames) {
       const dataLine = frame.split('\n').find(line => line.startsWith('data: '))
       if (!dataLine) continue
-      options.onEvent(JSON.parse(dataLine.slice(6)) as ChatStreamEvent)
+      options.onEvent(readEvent(JSON.parse(dataLine.slice(6))))
     }
     if (done) return
   }

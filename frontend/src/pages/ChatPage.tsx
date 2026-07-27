@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { HistoryOutlined, PlusCircleOutlined } from '@ant-design/icons'
 import { Alert, Button, Result, Spin } from 'antd'
+import { useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
 import { ChatComposer } from '../features/chat/components/ChatComposer'
 import { ChatHistorySkeleton } from '../features/chat/components/ChatHistorySkeleton'
@@ -12,6 +13,7 @@ import { useChatEntry } from '../features/chat/hooks/useChatEntry'
 import { useConversationDetail } from '../features/chat/hooks/useConversationDetail'
 import { useConversations } from '../features/chat/hooks/useConversations'
 import { useStreamingChat } from '../features/chat/hooks/useStreamingChat'
+import { mergeMessages } from '../features/chat/utils/mergeMessages'
 
 export function ChatPage() {
   const { agentId } = useParams()
@@ -26,6 +28,8 @@ export function ChatPage() {
   const conversationsQuery = useConversations(resolvedAgent?.id)
   const conversationDetailQuery = useConversationDetail(selectedConversationId)
   const stream = useStreamingChat()
+  const queryClient = useQueryClient()
+  const { acknowledgePersistedPair, pendingPersistedPairs } = stream
 
   useEffect(() => {
     setSelectedConversationId(null)
@@ -36,6 +40,44 @@ export function ChatPage() {
   useEffect(() => {
     if (stream.conversation?.id) setSelectedConversationId(stream.conversation.id)
   }, [stream.conversation?.id])
+
+  useEffect(() => {
+    if (!resolvedAgent?.id) return
+    for (const pair of pendingPersistedPairs) {
+      void queryClient.invalidateQueries({ queryKey: ['chat', 'conversation', pair.conversationId] })
+      void queryClient.invalidateQueries({ queryKey: ['chat', 'conversations', resolvedAgent.id] })
+    }
+  }, [pendingPersistedPairs, queryClient, resolvedAgent?.id])
+
+  useEffect(() => {
+    const serverMessages = conversationDetailQuery.data?.messages ?? []
+    for (const pair of pendingPersistedPairs) {
+      if (pair.conversationId !== selectedConversationId) continue
+      const hasCompletedUser = serverMessages.some(message => message.id === pair.userMessageId)
+      const hasCompletedAssistant = serverMessages.some(
+        message => message.id === pair.assistantMessageId && message.generationStatus === 'complete',
+      )
+      if (hasCompletedUser && hasCompletedAssistant) {
+        acknowledgePersistedPair(pair.requestId)
+      }
+    }
+  }, [acknowledgePersistedPair, conversationDetailQuery.data?.messages, pendingPersistedPairs, selectedConversationId])
+
+  const localAssistantPriorityIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const message of stream.messages) {
+      if (message.role === 'assistant' && (stream.sending || pendingPersistedPairs.some(pair => pair.assistantMessageId === message.id))) {
+        ids.add(message.id)
+      }
+    }
+    return ids
+  }, [pendingPersistedPairs, stream.messages, stream.sending])
+
+  const displayedMessages = mergeMessages(
+    conversationDetailQuery.data?.messages ?? [],
+    stream.messages,
+    localAssistantPriorityIds,
+  )
 
   if (isAgentPending) return <div className="grid h-full place-items-center"><Spin tip="正在加载智能体" /></div>
   if (isAgentError || !resolvedAgent) return <Result status="404" title="智能体不存在或无权访问" subTitle="请从智能体列表选择可用智能体。" />
@@ -52,7 +94,6 @@ export function ChatPage() {
     setComposerValue('')
     void stream.send({ agent, content: normalizedContent, conversationId: selectedConversationId })
   }
-  const displayedMessages = [...(conversationDetailQuery.data?.messages ?? []), ...stream.messages]
 
   return (
     <section className="flex h-full min-h-[680px] flex-col overflow-hidden bg-white" aria-label={`${agent.name} 聊天页面`}>

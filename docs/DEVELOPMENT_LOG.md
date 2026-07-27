@@ -1,5 +1,52 @@
 # 开发日志
 
+## 2026-07-27：流式消息重复渲染修复
+
+### 任务目标
+
+修复流式聊天中同一对用户/助手消息被渲染两次的问题：前端在 `message_start` 拿到服务端真实消息 ID 后未替换本地临时 ID，导致数据库详情和本地流式消息同时存在于 `displayedMessages`。
+
+### 实现内容
+
+- 将 `ChatStreamEvent` 从扁平可选字段改为可区分联合类型，`message_start` 的 `userMessageId`/`assistantMessageId` 变为必填。
+- `useStreamingChat` 在 `message_start` 时将 `local-user-*`/`local-assistant-*` 替换为服务端真实 ID；`StreamState` 新增 `assistantMessageId` 用于后续 `answer_delta` 定位。
+- `message_end` 不立即删除本地消息，而是将消息对记录到 `pendingPersistedPairs`，等待服务端详情确认后再清理。
+- 新增 `acknowledgePersistedPair(requestId)` 方法，仅在 React Query 会话详情缓存中确认包含该对完成消息后移除本地副本。
+- 新增 `mergeMessages` 纯函数：按 ID 合并服务端与本地消息，流式中的助手消息仅在 `sending === true` 或消息对尚处于 `pendingPersistedPairs` 时优先于服务端内容。
+- `ChatPage` 使用 `mergeMessages` 替代直接拼接；`message_end` 后 `invalidateQueries` 触发后台刷新；详情确认完成后调用 `acknowledgePersistedPair` 清理本地消息。
+- 每次发送流式请求前清空上一请求的真实消息 ID，避免新请求在收到自身 `message_start` 前失败时，把上一轮已完成助手消息误标记为失败。
+- SSE 消费端在分发前校验事件类型、请求 ID、序号及各事件必填字段；`answer_delta.content` 允许空字符串，避免合法的空增量被误判为协议错误。
+- `ChatPage` 的确认清理 effect 改为依赖具体状态和回调，避免依赖整个 hook 返回对象而增加无意义的重复执行。
+
+### 主要文件
+
+- `frontend/src/api/chat.ts`：`ChatStreamEvent` 改为联合类型，并增加 SSE 事件运行时结构校验。
+- `frontend/src/api/__tests__/chat.test.ts`：2 项 SSE 协议校验测试，覆盖合法事件分发与缺失必填字段拒绝。
+- `frontend/src/features/chat/hooks/useStreamingChat.ts`：真实 ID 替换、`pendingPersistedPairs`、`acknowledgePersistedPair`。
+- `frontend/src/features/chat/utils/mergeMessages.ts`：新增按 ID 去重合并纯函数。
+- `frontend/src/pages/ChatPage.tsx`：使用 `mergeMessages`、`invalidateQueries` 和 `acknowledgePersistedPair`。
+- `frontend/src/features/chat/utils/__tests__/mergeMessages.test.ts`：9 项合并逻辑测试。
+- `frontend/src/features/chat/hooks/__tests__/useStreamingChat.test.tsx`：7 项 hook 测试，覆盖新请求在 `message_start` 前失败时不污染上一轮消息状态。
+
+### 技术方案
+
+本地流式消息在服务端详情确认包含同一对完成消息前不删除。渲染时始终按真实消息 ID 去重；流式助手内容仅在发送进行中或尚未确认时优先显示，确认后由服务端数据接管。
+
+### 接口或数据变化
+
+无。后端、接口路径、数据库和迁移均未修改。
+
+### 验证情况
+
+- 通过：`pnpm test`，4 个测试文件共 19 项测试全部通过。
+- 通过：`pnpm build`（tsc + vite build）。
+- 未执行：浏览器人工联调；需验证新会话首条消息和已有会话续发两种场景下不出现重复消息。
+
+### 遗留问题
+
+- 浏览器端需人工验证：流式完成后消息不闪烁、不重复；详情查询失败时本地完成消息仍可见。
+- 停止生成、Redis 断线续流不在本次修复范围。
+
 ## 2026-07-27：阶段 1 消息显示顺序修复
 
 ### 任务目标
