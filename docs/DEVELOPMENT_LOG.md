@@ -1,5 +1,35 @@
 # 开发日志
 
+## 2026-07-27：编辑预览助手回复左对齐
+
+### 任务目标
+
+修复智能体编辑页右侧预览中，长助手回复继承欢迎态居中样式的问题。
+
+### 实现内容
+
+- 为共享 `ChatMessageList` 的 AI 气泡内容显式设置 `text-align: left`，避免父容器样式继承影响 Markdown 与普通回复。
+- 保持欢迎态、用户消息右侧布局和正式聊天的现有结构不变。
+
+### 主要文件
+
+- `frontend/src/features/chat/components/ChatMessageList.tsx`：助手消息内容对齐规则。
+- `frontend/src/features/chat/components/__tests__/ChatMessageList.test.tsx`：左对齐回归断言。
+
+### 接口或数据变化
+
+无。
+
+### 验证情况
+
+- 通过：组件测试 2 项通过。
+- 通过：`pnpm exec tsc --noEmit`。
+- 待执行：浏览器确认编辑预览的长 Markdown/普通助手回复均从左侧开始排版。
+
+### 遗留问题
+
+- 无代码级阻塞。
+
 ## 2026-07-27：生成中会话详情与新会话即时返回
 
 ### 任务目标

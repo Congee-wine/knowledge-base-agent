@@ -77,7 +77,7 @@ export function ChatMessageList({
         role={{
           ai: {
             placement: 'start',
-            styles: { content: { background: 'transparent', padding: 0 } },
+            styles: { content: { background: 'transparent', padding: 0, textAlign: 'left' } },
             variant: 'borderless',
           },
           user: { placement: 'end', variant: 'filled' },

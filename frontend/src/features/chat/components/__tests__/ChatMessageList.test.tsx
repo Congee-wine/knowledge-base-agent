@@ -37,6 +37,9 @@ describe('ChatMessageList', () => {
 
     expect(screen.getByText('第一条消息')).toBeInTheDocument()
     expect(bubbleListSpy).toHaveBeenLastCalledWith(expect.objectContaining({ autoScroll: false }))
+    expect(bubbleListSpy).toHaveBeenLastCalledWith(expect.objectContaining({
+      role: expect.objectContaining({ ai: expect.objectContaining({ styles: { content: expect.objectContaining({ textAlign: 'left' }) } }) }),
+    }))
   })
 
   it('waits for the Bubble.List scroll box before requesting an initial scroll', () => {
