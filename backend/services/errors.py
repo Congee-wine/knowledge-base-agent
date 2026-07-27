@@ -18,6 +18,10 @@ def stream_resume_unavailable() -> DomainError:
     return DomainError(409, "STREAM_RESUME_UNAVAILABLE", "当前暂不支持断线续流，请重新发送消息")
 
 
+def conversation_generation_in_progress() -> DomainError:
+    return DomainError(409, "CONVERSATION_GENERATION_IN_PROGRESS", "该会话正在生成回答，请先停止或等待完成")
+
+
 def immutable_agent() -> DomainError:
     return DomainError(409, "AGENT_IMMUTABLE", "内置 AI 管家不能修改或删除")
 

@@ -9,6 +9,7 @@ import { ChatMessageList } from '../features/chat/components/ChatMessageList'
 import { ChatWelcome } from '../features/chat/components/ChatWelcome'
 import { ConversationHistoryDrawer } from '../features/chat/components/ConversationHistoryDrawer'
 import { useAgent } from '../features/agents/hooks/useAgent'
+import type { Conversation } from '../types/chat'
 import { useChatEntry } from '../features/chat/hooks/useChatEntry'
 import { useConversationDetail } from '../features/chat/hooks/useConversationDetail'
 import { useConversations } from '../features/chat/hooks/useConversations'
@@ -27,20 +28,17 @@ export function ChatPage() {
   const isAgentError = agentId ? agentQuery.isError : entryQuery.isError
   const conversationsQuery = useConversations(resolvedAgent?.id)
   const conversationDetailQuery = useConversationDetail(selectedConversationId)
-  const stream = useStreamingChat()
+  const streaming = useStreamingChat()
+  const stream = streaming.getStream(selectedConversationId)
   const queryClient = useQueryClient()
-  const { acknowledgePersistedPair, pendingPersistedPairs } = stream
+  const { acknowledgePersistedPair, pendingPersistedPairs } = streaming
 
   useEffect(() => {
-    void stream.stop()
+    void streaming.stop()
     setSelectedConversationId(null)
     setComposerValue('')
-    stream.reset()
-  }, [resolvedAgent?.id, stream.reset, stream.stop])
-
-  useEffect(() => {
-    if (stream.conversation?.id) setSelectedConversationId(stream.conversation.id)
-  }, [stream.conversation?.id])
+    streaming.reset()
+  }, [resolvedAgent?.id, streaming.reset, streaming.stop])
 
   useEffect(() => {
     if (!resolvedAgent?.id) return
@@ -85,16 +83,32 @@ export function ChatPage() {
   const agent = resolvedAgent
 
   const createNewConversation = () => {
-    void stream.stop()
     setSelectedConversationId(null)
     setComposerValue('')
-    stream.reset()
   }
   const sendMessage = (content: string) => {
     const normalizedContent = content.trim()
     if (!normalizedContent || stream.sending) return
     setComposerValue('')
-    void stream.send({ agent, content: normalizedContent, conversationId: selectedConversationId })
+    void streaming.send({
+      agent,
+      content: normalizedContent,
+      conversationId: selectedConversationId,
+      onConversationCreated: conversationId => {
+        const now = new Date().toISOString()
+        const createdConversation: Conversation = {
+          agentId: agent.id,
+          createdAt: now,
+          id: conversationId,
+          title: normalizedContent.slice(0, 50),
+          updatedAt: now,
+        }
+        queryClient.setQueryData<{ items: Conversation[] }>(['chat', 'conversations', agent.id], current => ({
+          items: [createdConversation, ...(current?.items ?? []).filter(item => item.id !== conversationId)],
+        }))
+        setSelectedConversationId(current => current ?? conversationId)
+      },
+    })
   }
 
   return (
@@ -113,7 +127,7 @@ export function ChatPage() {
             : <ChatMessageList messages={displayedMessages} pendingAssistant={false} scrollable statusText={stream.statusText} />}
         {stream.error && <Alert className="mx-auto mt-3 w-full max-w-[810px]" message={stream.error} showIcon type="error" />}
       </div>
-      <ChatComposer agent={agent} sending={stream.sending} value={composerValue} onChange={setComposerValue} onStop={() => void stream.stop()} onSubmit={sendMessage} />
+      <ChatComposer agent={agent} sending={stream.sending} value={composerValue} onChange={setComposerValue} onStop={() => void streaming.stop(selectedConversationId)} onSubmit={sendMessage} />
       <ConversationHistoryDrawer
         conversations={conversationsQuery.data?.items ?? []}
         creating={false}
@@ -122,7 +136,7 @@ export function ChatPage() {
         selectedConversationId={selectedConversationId}
         onClose={() => setHistoryOpen(false)}
         onNewConversation={createNewConversation}
-        onSelectConversation={conversationId => { void stream.stop(); setSelectedConversationId(conversationId); stream.reset() }}
+        onSelectConversation={conversationId => setSelectedConversationId(conversationId)}
       />
     </section>
   )

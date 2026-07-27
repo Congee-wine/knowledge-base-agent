@@ -9,6 +9,7 @@ from database import get_connection
 from repositories import conversations as repo
 from repositories.agents import BUILTIN_AGENT_ID
 from services import conversations as service
+from services.errors import DomainError
 
 
 class ConversationsServiceTests(unittest.TestCase):
@@ -68,6 +69,30 @@ class ConversationsServiceTests(unittest.TestCase):
         error_events = [e for e in events if e.get("type") == "error"]
         self.assertTrue(len(error_events) > 0)
         self.assertEqual(error_events[0]["code"], "REQUEST_IN_PROGRESS")
+
+    def test_second_request_in_same_conversation_is_rejected_while_generating(self) -> None:
+        conversation, _, assistant_message, _ = repo.start_stream_generation(
+            str(self.user_id), self.agent_id, None, "第一个问题", uuid.uuid4().hex
+        )
+
+        with self.assertRaises(DomainError) as context:
+            repo.start_stream_generation(
+                str(self.user_id), self.agent_id, str(conversation["id"]), "第二个问题", uuid.uuid4().hex
+            )
+
+        self.assertEqual(context.exception.code, "CONVERSATION_GENERATION_IN_PROGRESS")
+        repo.interrupt_stream_generation(str(assistant_message["id"]), "")
+
+    def test_conversation_detail_includes_generating_assistant_message(self) -> None:
+        conversation, _, assistant_message, _ = repo.start_stream_generation(
+            str(self.user_id), self.agent_id, None, "仍在生成", uuid.uuid4().hex
+        )
+
+        detail = service.get_conversation(str(self.user_id), str(conversation["id"]))
+
+        self.assertEqual(detail.messages[-1].id, str(assistant_message["id"]))
+        self.assertEqual(detail.messages[-1].generation_status, "generating")
+        repo.interrupt_stream_generation(str(assistant_message["id"]), "")
 
     @patch("services.conversations.stream_answer")
     def test_failed_request_returns_retryable_error(self, mock_stream: object) -> None:

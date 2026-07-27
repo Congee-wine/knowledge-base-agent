@@ -1,5 +1,83 @@
 # 开发日志
 
+## 2026-07-27：生成中会话详情与新会话即时返回
+
+### 任务目标
+
+修复并发流式生成期间读取会话详情返回 500，以及新会话必须等待模型结束才能重新从侧边栏进入的问题。
+
+### 实现内容
+
+- `MessageResponse` 接受数据库已使用的 `generating` 消息状态；读取含生成中助手消息的会话详情不再触发 Pydantic 校验错误。
+- 新会话收到 `message_start` 的真实会话 ID 后，立即写入当前智能体的 React Query 会话列表缓存；模型仍在生成时即可切换到其他会话，再从侧边栏返回。
+- 新增会话服务测试，覆盖生成中助手消息的详情读取。
+
+### 主要文件
+
+- `backend/schemas/conversations.py`：会话详情消息状态契约。
+- `backend/tests/test_conversations_service.py`：生成中消息详情回归测试。
+- `frontend/src/pages/ChatPage.tsx`：首个流事件后的会话列表缓存更新。
+
+### 技术方案
+
+会话详情接口必须能返回持久化生命周期中的所有合法消息状态；前端不等待最终答案或列表重新请求，而是在服务端已经创建真实会话并返回 ID 的 `message_start` 时乐观写入列表缓存，随后仍由完成后的失效刷新校正标题和时间。
+
+### 接口或数据变化
+
+接口响应枚举增加已有状态 `generating`；无路由、数据库迁移或依赖变化。
+
+### 验证情况
+
+- 通过：后端 `.venv\\Scripts\\python.exe -m unittest tests.test_conversations_service`，6 项通过。
+- 通过：前端 `pnpm test -- --run`，6 个测试文件、28 项测试通过。
+- 通过：前端 `pnpm build`；首次沙箱构建因既有 `highlight.js` 读取权限失败，授权环境重试后通过。
+- 待执行：浏览器验证两个会话同时生成、切换后返回生成中会话，以及新会话立即出现在侧边栏。
+
+### 遗留问题
+
+- 侧边栏尚未显示“生成中”视觉标记；会话即时可返回与流状态隔离不受影响。
+
+## 2026-07-27：会话级并发流隔离
+
+### 任务目标
+
+支持同一智能体的不同会话并行生成，同时禁止同一会话同时存在两个生成请求，避免切换会话时取消旧流或让延迟事件污染当前页面。
+
+### 实现内容
+
+- `useStreamingChat` 从单一活动流重构为按会话 ID（新会话使用临时键）隔离的消息、请求状态、序号和 `AbortController` 映射。
+- 切换历史会话只切换页面展示，不再停止或重置其他会话流；停止按钮只影响当前会话。
+- 新会话在收到 `message_start` 的真实会话 ID 后，将本地流状态迁移到该会话键，后续事件继续更新原请求所属会话。
+- 后端在锁定会话并写入消息前检查是否存在 `generating` 助手消息；存在时返回 `409 CONVERSATION_GENERATION_IN_PROGRESS`，不创建第二条消息对。
+
+### 主要文件
+
+- `frontend/src/features/chat/hooks/useStreamingChat.ts`：会话隔离的流状态、事件路由和取消控制。
+- `frontend/src/pages/ChatPage.tsx`：按当前会话读取流状态，切换会话不再中止其他会话。
+- `backend/repositories/conversations.py`：同会话生成中保护。
+- `backend/services/errors.py`：稳定并发冲突错误码。
+- `backend/tests/test_conversations_service.py`：同会话第二请求拒绝测试。
+
+### 技术方案
+
+前端以会话键而非当前页面选择项归属 SSE 事件，避免旧流在用户切换后写入新会话。后端使用既有会话行锁保护“检查生成中状态 + 预留消息序号 + 写入消息对”的临界区，从而允许不同会话并行，同时串行化同会话生成。
+
+### 接口或数据变化
+
+- 新增 409 错误码：`CONVERSATION_GENERATION_IN_PROGRESS`。
+- 不修改数据库结构、SSE 事件结构或依赖。
+
+### 验证情况
+
+- 通过：前端 `pnpm test -- --run`，6 个测试文件、28 项测试通过。
+- 通过：前端 `pnpm build`；首次沙箱构建因既有 `highlight.js` 读取权限失败，授权环境重试后通过。
+- 通过：后端 `.venv\\Scripts\\python.exe -m unittest tests.test_conversations_service`，5 项通过。
+- 待执行：浏览器中同时向两个会话发送请求、切换查看、分别停止及同会话重复发送的人工验收。
+
+### 遗留问题
+
+- 会话列表尚未展示非当前会话“正在生成”的视觉状态；不影响流隔离和数据正确性，可在后续页面体验优化时补充。
+
 ## 2026-07-27：新会话消息顶部对齐与受控自动滚动
 
 ### 任务目标

@@ -7,11 +7,13 @@ import { useStreamingChat } from '../useStreamingChat'
 let capturedOnEvent: ((event: ChatStreamEvent) => void) | null = null
 let resolveStream: (() => void) | null = null
 let rejectStream: ((reason?: unknown) => void) | null = null
+const eventHandlers = new Map<string, (event: ChatStreamEvent) => void>()
 
 vi.mock('../../../../api/chat', () => ({
   interruptStreamMessage: vi.fn(),
-  streamChat: vi.fn(async (options: { onEvent: (event: ChatStreamEvent) => void }) => {
+  streamChat: vi.fn(async (options: { body: { requestId: string }; onEvent: (event: ChatStreamEvent) => void }) => {
     capturedOnEvent = options.onEvent
+    eventHandlers.set(options.body.requestId, options.onEvent)
     return new Promise<void>((resolve, reject) => {
       resolveStream = resolve
       rejectStream = reject
@@ -41,6 +43,12 @@ function emit(event: ChatStreamEvent) {
   })
 }
 
+function emitFor(requestId: string, event: ChatStreamEvent) {
+  act(() => {
+    eventHandlers.get(requestId)?.(event)
+  })
+}
+
 function getRequestId(result: { current: ReturnType<typeof useStreamingChat> }) {
   const userMsg = result.current.messages.find(m => m.role === 'user')
   return userMsg!.id.replace('local-user-', '')
@@ -51,6 +59,7 @@ describe('useStreamingChat', () => {
     capturedOnEvent = null
     resolveStream = null
     rejectStream = null
+    eventHandlers.clear()
     vi.clearAllMocks()
   })
 
@@ -323,6 +332,27 @@ describe('useStreamingChat', () => {
     await waitFor(() => {
       expect(result.current.messages.find(message => message.id === 'a-1')?.generationStatus).toBe('complete')
       expect(result.current.messages.find(message => message.id === secondAssistant?.id)?.generationStatus).toBe('failed')
+    })
+  })
+
+  it('keeps concurrent streams isolated by conversation', async () => {
+    const { result } = renderHook(() => useStreamingChat())
+
+    act(() => {
+      void result.current.send({ agent: mockAgent, content: 'A 问题', conversationId: 'conversation-a' })
+      void result.current.send({ agent: mockAgent, content: 'B 问题', conversationId: 'conversation-b' })
+    })
+
+    await waitFor(() => expect(eventHandlers.size).toBe(2))
+    const [requestA, requestB] = [...eventHandlers.keys()]
+    emitFor(requestA, { type: 'message_start', mode: 'conversation', requestId: requestA, sequence: 1, conversationId: 'conversation-a', userMessageId: 'user-a', assistantMessageId: 'assistant-a' })
+    emitFor(requestB, { type: 'message_start', mode: 'conversation', requestId: requestB, sequence: 1, conversationId: 'conversation-b', userMessageId: 'user-b', assistantMessageId: 'assistant-b' })
+    emitFor(requestA, { type: 'answer_delta', mode: 'conversation', requestId: requestA, sequence: 2, content: 'A 回答' })
+    emitFor(requestB, { type: 'answer_delta', mode: 'conversation', requestId: requestB, sequence: 2, content: 'B 回答' })
+
+    await waitFor(() => {
+      expect(result.current.getStream('conversation-a').messages.find(message => message.id === 'assistant-a')?.content).toBe('A 回答')
+      expect(result.current.getStream('conversation-b').messages.find(message => message.id === 'assistant-b')?.content).toBe('B 回答')
     })
   })
 })

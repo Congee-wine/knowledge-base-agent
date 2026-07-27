@@ -30,7 +30,7 @@ class MessageResponse(BaseModel):
     id: str
     role: Literal["user", "assistant"]
     content: str
-    generation_status: Literal["complete", "interrupted", "failed"] = Field(serialization_alias="generationStatus")
+    generation_status: Literal["generating", "complete", "interrupted", "failed"] = Field(serialization_alias="generationStatus")
     created_at: datetime = Field(serialization_alias="createdAt")
 
 

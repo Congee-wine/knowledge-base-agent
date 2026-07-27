@@ -227,6 +227,14 @@ def _reserve_message_orders(cursor: Any, conversation_id: object) -> tuple[int, 
     if cursor.fetchone() is None:
         raise _not_found_error()
     cursor.execute(
+        """SELECT 1 FROM messages
+        WHERE conversation_id = %s AND role = 'assistant' AND generation_status = 'generating'
+        LIMIT 1""",
+        (str(conversation_id),),
+    )
+    if cursor.fetchone() is not None:
+        raise _conversation_generation_in_progress_error()
+    cursor.execute(
         "SELECT COALESCE(MAX(message_order), 0) + 1 AS first_order FROM messages WHERE conversation_id = %s",
         (str(conversation_id),),
     )
@@ -379,3 +387,8 @@ def _not_found_error() -> Exception:
 def _stream_request_unrecoverable_error() -> Exception:
     from services.errors import stream_request_unrecoverable
     return stream_request_unrecoverable()
+
+
+def _conversation_generation_in_progress_error() -> Exception:
+    from services.errors import conversation_generation_in_progress
+    return conversation_generation_in_progress()
