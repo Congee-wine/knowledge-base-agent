@@ -29,3 +29,7 @@ class StreamRequest(BaseModel):
 class PreviewStreamRequest(StreamRequest):
     draft_agent: AgentWriteFields = Field(alias="draftAgent")
     history: list[StreamHistoryMessage] = Field(default_factory=list, max_length=10)
+
+
+class InterruptStreamRequest(BaseModel):
+    content: str = Field(default="", max_length=4000)

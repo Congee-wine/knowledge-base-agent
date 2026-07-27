@@ -14,10 +14,12 @@ from schemas.conversations import (
     CreateConversationRequest,
     CreateMessageRequest,
     EchoMessageResponse,
+    MessageResponse,
     SendMessageRequest,
 )
-from schemas.streaming import StreamRequest
+from schemas.streaming import InterruptStreamRequest, StreamRequest
 from services import conversations as conversation_service
+from services.errors import stream_resume_unavailable
 
 
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
@@ -72,8 +74,19 @@ def stream_message(
     conversation_id: str | None = Query(default=None, alias="conversationId"),
     current_user: UserResponse = Depends(get_current_user),
 ) -> StreamingResponse:
+    if data.after_sequence > 0:
+        raise stream_resume_unavailable()
     events = conversation_service.stream_message(current_user.id, agent_id, conversation_id, data.content, data.request_id)
     return StreamingResponse(_sse(events, data.request_id, "conversation"), media_type="text/event-stream")
+
+
+@router.post("/messages/{assistant_message_id}:interrupt", response_model=MessageResponse)
+def interrupt_stream_message(
+    assistant_message_id: str,
+    data: InterruptStreamRequest,
+    current_user: Annotated[UserResponse, Depends(get_current_user)],
+) -> MessageResponse:
+    return conversation_service.interrupt_stream_message(current_user.id, assistant_message_id, data.content)
 
 
 @router.get("/{conversation_id}", response_model=ConversationDetailResponse)

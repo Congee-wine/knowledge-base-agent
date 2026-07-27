@@ -1,5 +1,6 @@
 import { getApiBaseUrl, request } from './http'
 import { getStoredAccessToken } from '../lib/auth'
+import { parseSseChunk } from '../features/chat/streaming/sseParser'
 import type { ChatAgent, Conversation, ConversationDetail, SendMessageResult } from '../types/chat'
 
 type StreamEventBase = {
@@ -140,6 +141,13 @@ export function sendMessage(input: { agentId: string; conversationId: string | n
   })
 }
 
+export function interruptStreamMessage(assistantMessageId: string, content: string) {
+  return request<{ id: string; generationStatus: 'interrupted' }>(
+    `/api/conversations/messages/${encodeURIComponent(assistantMessageId)}:interrupt`,
+    { body: { content }, headers: authorizationHeader(), method: 'POST' },
+  )
+}
+
 export async function streamChat(options: StreamOptions): Promise<void> {
   const response = await fetch(`${getApiBaseUrl()}${options.path}`, {
     body: JSON.stringify(options.body),
@@ -158,14 +166,9 @@ export async function streamChat(options: StreamOptions): Promise<void> {
   let pending = ''
   while (true) {
     const { done, value } = await reader.read()
-    pending += decoder.decode(value, { stream: !done })
-    const frames = pending.split('\n\n')
-    pending = frames.pop() ?? ''
-    for (const frame of frames) {
-      const dataLine = frame.split('\n').find(line => line.startsWith('data: '))
-      if (!dataLine) continue
-      options.onEvent(readEvent(JSON.parse(dataLine.slice(6))))
-    }
+    const parsed = parseSseChunk(pending, decoder.decode(value, { stream: !done }), done)
+    pending = parsed.pending
+    for (const payload of parsed.frames) options.onEvent(readEvent(payload))
     if (done) return
   }
 }

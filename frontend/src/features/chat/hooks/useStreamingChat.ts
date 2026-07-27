@@ -1,5 +1,5 @@
-import { useCallback, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
-import { streamChat, type ChatStreamEvent } from '../../../api/chat'
+import { useCallback, useEffect, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
+import { interruptStreamMessage, streamChat, type ChatStreamEvent } from '../../../api/chat'
 import type { ChatAgent, ChatMessage, Conversation } from '../../../types/chat'
 
 type SendStreamInput = {
@@ -27,6 +27,13 @@ type StreamState = {
   pendingPersistedPairs: PendingPersistedPair[]
 }
 
+type ActiveStream = {
+  assistantMessageId: string | null
+  controller: AbortController
+  mode: 'conversation' | 'preview'
+  requestId: string
+}
+
 const initialState: StreamState = {
   conversation: null,
   error: null,
@@ -44,12 +51,38 @@ function createRequestId() {
 
 export function useStreamingChat() {
   const [state, setState] = useState<StreamState>(initialState)
+  const activeStream = useRef<ActiveStream | null>(null)
   const lastSequence = useRef(0)
+  const stateRef = useRef(state)
+  stateRef.current = state
 
   const reset = useCallback(() => {
     lastSequence.current = 0
     setState(initialState)
   }, [])
+
+  const stop = useCallback(async () => {
+    const active = activeStream.current
+    if (!active) return
+    active.controller.abort()
+    activeStream.current = null
+    const assistant = stateRef.current.messages.find(message => message.id === (active.assistantMessageId ?? `local-assistant-${active.requestId}`))
+    setState(current => ({
+      ...current,
+      messages: updateAssistant(current.messages, active.assistantMessageId, active.requestId, message => ({ ...message, generationStatus: 'interrupted' })),
+      sending: false,
+      statusText: null,
+    }))
+    if (active.mode === 'conversation' && active.assistantMessageId) {
+      try {
+        await interruptStreamMessage(active.assistantMessageId, assistant?.content ?? '')
+      } catch {
+        setState(current => ({ ...current, error: '停止生成失败，请刷新会话确认最终状态。' }))
+      }
+    }
+  }, [])
+
+  useEffect(() => () => { void stop() }, [stop])
 
   const acknowledgePersistedPair = useCallback((requestId: string) => {
     setState(current => {
@@ -70,6 +103,9 @@ export function useStreamingChat() {
 
   const send = useCallback(async ({ agent, content, conversationId, preview = false }: SendStreamInput) => {
     const requestId = createRequestId()
+    const mode = preview ? 'preview' : 'conversation'
+    const controller = new AbortController()
+    activeStream.current = { assistantMessageId: null, controller, mode, requestId }
     const createdAt = new Date().toISOString()
     const userMessage: ChatMessage = { content, createdAt, generationStatus: 'complete', id: `local-user-${requestId}`, role: 'user' }
     const assistantMessage: ChatMessage = { content: '', createdAt, generationStatus: 'generating', id: `local-assistant-${requestId}`, role: 'assistant' }
@@ -91,14 +127,27 @@ export function useStreamingChat() {
       : { content, requestId }
 
     try {
-      await streamChat({ body, path, onEvent: event => applyEvent(event, requestId, preview ? 'preview' : 'conversation', setState, lastSequence) })
+      await streamChat({
+        body,
+        path,
+        signal: controller.signal,
+        onEvent: event => {
+          if (event.type === 'message_start' && event.mode === 'conversation' && activeStream.current?.requestId === requestId) {
+            activeStream.current.assistantMessageId = event.assistantMessageId
+          }
+          applyEvent(event, requestId, mode, setState, lastSequence)
+        },
+      })
     } catch (error) {
+      if (controller.signal.aborted) return
       const text = error instanceof Error ? error.message : '发送失败，请稍后重试'
       setState(current => ({ ...current, error: text, messages: updateAssistant(current.messages, current.assistantMessageId, requestId, message => ({ ...message, generationStatus: 'failed' })), sending: false }))
+    } finally {
+      if (activeStream.current?.requestId === requestId) activeStream.current = null
     }
   }, [state.messages])
 
-  return { ...state, acknowledgePersistedPair, reset, send }
+  return { ...state, acknowledgePersistedPair, reset, send, stop }
 }
 
 function applyEvent(event: ChatStreamEvent, requestId: string, mode: ChatStreamEvent['mode'], setState: Dispatch<SetStateAction<StreamState>>, lastSequence: MutableRefObject<number>) {

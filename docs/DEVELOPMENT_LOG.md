@@ -1,5 +1,120 @@
 # 开发日志
 
+## 2026-07-27：使用 Sender 内置停止生成控件
+
+### 任务目标
+
+消除输入区生成状态中重复的停止操作，并保持已有的正式会话中断和预览本地取消逻辑。
+
+### 实现内容
+
+- 移除输入区 footer 中额外渲染的“停止生成”按钮。
+- 将 Ant Design X `Sender` 在 `loading` 状态下内置的取消控件绑定到既有 `stream.stop()`。
+
+### 主要文件
+
+- `frontend/src/features/chat/components/ChatComposer.tsx`：使用 `Sender.onCancel` 复用框架的内置停止控件。
+
+### 技术方案
+
+保留框架组件在加载状态下原生呈现的方形中断图标，避免重复 UI；取消回调仍复用阶段 3 已实现的正式会话持久化和预览隔离逻辑。
+
+### 接口或数据变化
+
+无。
+
+### 验证情况
+
+- 待执行前端构建和浏览器验证。
+
+### 遗留问题
+
+- 仍需在阶段 4 验证真实流式生成时内置控件的视觉与中断行为。
+
+## 2026-07-27：阶段 3 前端 SSE 状态机与停止生成
+
+### 任务目标
+
+让正式聊天和编辑页预览以一致的流式解析及请求控制方式工作，并为用户提供可停止的生成过程。
+
+### 实现内容
+
+- 新增增量 SSE 解析器，支持 `\n`/`\r\n`、同帧多行 `data:`、跨分块帧和流结束时未带空行的帧。
+- Hook 为每条活动流保存 `AbortController`、运行模式、请求 ID 与正式助手消息 ID，并过滤模式不匹配的事件。
+- 停止正式会话时标记本地消息为 `interrupted`，调用中断接口保存部分回答；停止预览时只取消本地请求。
+- 聊天页切换智能体、切换会话或新建会话前停止活动流；编辑预览切换智能体和组件卸载时停止并重置预览。
+- 输入区在生成时显示“停止生成”操作。
+
+### 主要文件
+
+- `frontend/src/features/chat/streaming/sseParser.ts`：增量 SSE 帧解析。
+- `frontend/src/api/chat.ts`：解析器接入与中断接口客户端。
+- `frontend/src/features/chat/hooks/useStreamingChat.ts`：活动流和停止逻辑。
+- `frontend/src/features/chat/components/ChatComposer.tsx`、`pages/ChatPage.tsx`、`features/agents/components/AgentEditorPreview.tsx`：停止生成与页面清理接入。
+- `frontend/src/features/chat/streaming/sseParser.test.ts`、`useStreamingChat.test.tsx`：解析和停止行为测试。
+
+### 技术方案
+
+以 `AbortController` 负责本地网络中止，以后端中断接口负责正式消息终态；两者缺一不可。预览没有持久化消息 ID，因此不调用正式中断接口。
+
+### 接口或数据变化
+
+无新增前端依赖或数据库变更；前端开始消费阶段 2B 新增的中断接口。
+
+### 验证情况
+
+- 通过：`pnpm test -- --run`，5 个测试文件、25 项测试。
+- 通过：`pnpm build`。
+- 未执行：真实浏览器和认证后的端到端流式中断联调。
+
+### 遗留问题
+
+- 尚未将状态更新彻底抽取为独立 reducer；当前 Hook 已具备活动流边界，后续可在不改变协议的前提下继续拆分。
+- 阶段 4 需验证正式历史覆盖、本地预览隔离、停止按钮和 Markdown 流式展示。
+
+## 2026-07-27：阶段 2B 后端运行生命周期与数据隔离
+
+### 任务目标
+
+让正式聊天使用受控历史上下文并具备可持久化的中断终态，同时保证编辑预览不写入正式业务数据。
+
+### 实现内容
+
+- 新增查询：仅返回当前用户消息之前、内容非空且 `generation_status='complete'` 的最近 10 条历史消息。
+- 正式模型调用使用该历史；正在生成、失败、已中断和空内容消息不会进入 Prompt。
+- `afterSequence > 0` 在两个流式入口处统一返回 `STREAM_RESUME_UNAVAILABLE`，不伪装支持续流。
+- 新增正式助手消息中断接口；它验证消息属于当前用户且仍在生成中，保存客户端提供的已生成片段并标记为 `interrupted`。
+- 预览服务继续只读取草稿请求和本地历史，不调用任何业务写入方法。
+
+### 主要文件
+
+- `backend/repositories/conversations.py`：有效历史查询和按用户中断消息更新。
+- `backend/services/conversations.py`：历史组装与中断用例。
+- `backend/routers/conversations.py`、`backend/routers/agents.py`：中断路由和续流拒绝。
+- `backend/schemas/streaming.py`：中断请求结构。
+- `backend/tests/test_streaming_protocol.py`：历史加载、续流拒绝和部分回答持久化测试。
+
+### 技术方案
+
+历史查询在插入当前消息后按其 `message_order` 截断，避免将本轮用户消息重复作为历史传给模型。中断请求由后续前端状态机传入当前累计文本，以保持中断回答可回显。
+
+### 接口或数据变化
+
+- 新增 `POST /api/conversations/messages/{assistantMessageId}:interrupt`。
+- 请求体：`{ "content": "已生成的部分回答" }`，可省略并默认空字符串。
+- 无数据库迁移或新增依赖。
+
+### 验证情况
+
+- 通过：会话服务和 SSE 协议测试共 10 项。
+- 通过：相关 Python 模块 `py_compile`。
+- 未执行：认证后的真实 HTTP 中断请求和浏览器端停止生成联调，留待阶段 3。
+
+### 遗留问题
+
+- 前端尚未调用中断接口，`AbortController`、取消后的本地状态同步和页面卸载清理属于阶段 3。
+- Redis 断线续流仍明确不在当前范围。
+
 ## 2026-07-27：阶段 2A 双模式 SSE 契约
 
 ### 任务目标

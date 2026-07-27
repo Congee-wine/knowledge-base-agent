@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import json
 import unittest
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from routers.agents import _preview_sse
-from routers.conversations import _sse
+from routers.conversations import _sse, stream_message as stream_message_route
 from services import agent_preview
+from services import conversations as conversation_service
+from services.errors import DomainError
 
 
 def _frame_data(frame: str) -> dict[str, object]:
@@ -49,6 +52,56 @@ class StreamingProtocolTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "Only personal agents"):
             agent_preview.stream_preview("user-1", "agent-1", request)
+
+    @patch("services.conversations.conversation_repository.complete_stream_generation")
+    @patch("services.conversations.stream_answer", return_value=iter(["answer"]))
+    @patch("services.conversations.conversation_repository.list_valid_history")
+    @patch("services.conversations.conversation_repository.start_stream_generation")
+    @patch("services.conversations._ensure_active_agent", return_value=SimpleNamespace(system_prompt="prompt"))
+    def test_conversation_runtime_uses_only_valid_history(
+        self,
+        _: object,
+        start_generation: object,
+        list_history: object,
+        stream_answer: object,
+        complete_generation: object,
+    ) -> None:
+        conversation = {"id": "conversation-1"}
+        user_message = {"id": "user-1", "message_order": 7}
+        assistant_message = {"id": "assistant-1", "generation_status": "generating"}
+        start_generation.return_value = conversation, user_message, assistant_message, True
+        list_history.return_value = [{"role": "user", "content": "previous question"}]
+
+        events = list(conversation_service.stream_message("user-1", "agent-1", "conversation-1", "new question", "request-1"))
+
+        list_history.assert_called_once_with("conversation-1", 7, 10)
+        stream_answer.assert_called_once_with("prompt", [{"role": "user", "content": "previous question"}], "new question")
+        complete_generation.assert_called_once_with("assistant-1", "answer")
+        self.assertEqual(events[-1]["type"], "message_end")
+
+    def test_resume_request_is_rejected_before_stream_creation(self) -> None:
+        request = SimpleNamespace(after_sequence=1, content="hello", request_id="request-1")
+
+        with self.assertRaises(DomainError) as captured:
+            stream_message_route(request, "agent-1", None, SimpleNamespace(id="user-1"))
+
+        self.assertEqual(captured.exception.code, "STREAM_RESUME_UNAVAILABLE")
+
+    @patch("services.conversations.conversation_repository.interrupt_stream_generation_for_user")
+    def test_interrupt_persists_the_partial_answer(self, interrupt_generation: object) -> None:
+        interrupt_generation.return_value = {
+            "id": "assistant-1",
+            "role": "assistant",
+            "content": "partial answer",
+            "generation_status": "interrupted",
+            "created_at": datetime.now(timezone.utc),
+        }
+
+        message = conversation_service.interrupt_stream_message("user-1", "assistant-1", "partial answer")
+
+        interrupt_generation.assert_called_once_with("user-1", "assistant-1", "partial answer")
+        self.assertEqual(message.generation_status, "interrupted")
+        self.assertEqual(message.content, "partial answer")
 
 
 if __name__ == "__main__":

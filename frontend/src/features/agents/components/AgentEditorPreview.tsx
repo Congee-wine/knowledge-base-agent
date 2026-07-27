@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ChatComposerSurface } from '../../chat/components/ChatComposer'
 import { ChatMessageList } from '../../chat/components/ChatMessageList'
 import { useStreamingChat } from '../../chat/hooks/useStreamingChat'
@@ -11,6 +11,12 @@ export function AgentEditorPreview({ agent }: AgentEditorPreviewProps) {
   const [draftMessage, setDraftMessage] = useState('')
   const stream = useStreamingChat()
 
+  useEffect(() => () => { void stream.stop() }, [stream.stop])
+  useEffect(() => {
+    void stream.stop()
+    stream.reset()
+  }, [agent.id, stream.reset, stream.stop])
+
   return (
     <aside className="agent-workbench__preview">
       {stream.messages.length === 0
@@ -22,6 +28,7 @@ export function AgentEditorPreview({ agent }: AgentEditorPreviewProps) {
           sending={stream.sending}
           value={draftMessage}
           onChange={setDraftMessage}
+          onStop={() => void stream.stop()}
           onSubmit={content => {
             setDraftMessage('')
             void stream.send({ agent, content, conversationId: null, preview: true })

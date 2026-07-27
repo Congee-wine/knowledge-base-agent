@@ -82,7 +82,7 @@ def stream_message(user_id: str, agent_id: str, conversation_id: str | None, con
             else:
                 yield {"type": "error", "code": "GENERATION_FAILED", "message": "上次生成已失败，请重新发送消息", "retryable": True}
             return
-        history: list[ModelMessage] = []
+        history = _load_valid_history(conversation, user_message)
         answer = ""
         try:
             yield {"type": "status", "stage": "generating", "text": "正在生成回答"}
@@ -99,6 +99,20 @@ def stream_message(user_id: str, agent_id: str, conversation_id: str | None, con
             yield {"type": "error", "code": "RUNTIME_FAILED", "message": "回答生成失败，请稍后重试", "retryable": True}
 
     return events()
+
+
+def interrupt_stream_message(user_id: str, assistant_message_id: str, content: str) -> MessageResponse:
+    message = conversation_repository.interrupt_stream_generation_for_user(user_id, assistant_message_id, content)
+    if message is None:
+        raise not_found()
+    return _message_response(message)
+
+
+def _load_valid_history(conversation: Mapping[str, Any], user_message: Mapping[str, Any]) -> list[ModelMessage]:
+    rows = conversation_repository.list_valid_history(
+        str(conversation["id"]), int(user_message["message_order"]), 10
+    )
+    return [{"role": row["role"], "content": row["content"]} for row in rows]
 
 
 def _ensure_active_agent(user_id: str, agent_id: str) -> AgentResponse:

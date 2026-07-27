@@ -67,6 +67,26 @@ def list_messages(conversation_id: str) -> list[Mapping[str, Any]]:
             return cursor.fetchall()
 
 
+def list_valid_history(conversation_id: str, before_message_order: int, limit: int) -> list[Mapping[str, Any]]:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """SELECT role, content FROM (
+                    SELECT role, content, message_order
+                    FROM messages
+                    WHERE conversation_id = %s
+                      AND message_order < %s
+                      AND generation_status = 'complete'
+                      AND btrim(content) <> ''
+                    ORDER BY message_order DESC
+                    LIMIT %s
+                ) AS recent_messages
+                ORDER BY message_order""",
+                (conversation_id, before_message_order, limit),
+            )
+            return cursor.fetchall()
+
+
 def append_echo_messages(
     user_id: str, conversation_id: str, content: str, expected_agent_id: str | None = None
 ) -> tuple[Mapping[str, Any], Mapping[str, Any], Mapping[str, Any]] | None:
@@ -235,6 +255,33 @@ def complete_stream_generation(assistant_message_id: str, content: str) -> Mappi
 
 def interrupt_stream_generation(assistant_message_id: str, content: str) -> Mapping[str, Any]:
     return _update_stream_status(assistant_message_id, content, "interrupted")
+
+
+def interrupt_stream_generation_for_user(
+    user_id: str, assistant_message_id: str, content: str
+) -> Mapping[str, Any] | None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """UPDATE messages AS assistant
+                SET content = %s, generation_status = 'interrupted'
+                FROM conversations
+                WHERE assistant.id = %s
+                  AND assistant.conversation_id = conversations.id
+                  AND conversations.owner_user_id = %s
+                  AND assistant.role = 'assistant'
+                  AND assistant.generation_status = 'generating'
+                RETURNING assistant.*""",
+                (content, assistant_message_id, user_id),
+            )
+            message = cursor.fetchone()
+            if message is None:
+                return None
+            cursor.execute(
+                "UPDATE conversations SET updated_at = %s WHERE id = %s",
+                (datetime.now(timezone.utc), message["conversation_id"]),
+            )
+            return message
 
 
 def fail_stream_generation(assistant_message_id: str, content: str) -> Mapping[str, Any]:

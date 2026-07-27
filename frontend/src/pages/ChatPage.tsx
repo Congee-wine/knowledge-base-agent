@@ -32,10 +32,11 @@ export function ChatPage() {
   const { acknowledgePersistedPair, pendingPersistedPairs } = stream
 
   useEffect(() => {
+    void stream.stop()
     setSelectedConversationId(null)
     setComposerValue('')
     stream.reset()
-  }, [resolvedAgent?.id, stream.reset])
+  }, [resolvedAgent?.id, stream.reset, stream.stop])
 
   useEffect(() => {
     if (stream.conversation?.id) setSelectedConversationId(stream.conversation.id)
@@ -84,6 +85,7 @@ export function ChatPage() {
   const agent = resolvedAgent
 
   const createNewConversation = () => {
+    void stream.stop()
     setSelectedConversationId(null)
     setComposerValue('')
     stream.reset()
@@ -111,7 +113,7 @@ export function ChatPage() {
             : <ChatMessageList messages={displayedMessages} pendingAssistant={false} statusText={stream.statusText} />}
         {stream.error && <Alert className="mx-auto mt-3 w-full max-w-[810px]" message={stream.error} showIcon type="error" />}
       </div>
-      <ChatComposer agent={agent} sending={stream.sending} value={composerValue} onChange={setComposerValue} onSubmit={sendMessage} />
+      <ChatComposer agent={agent} sending={stream.sending} value={composerValue} onChange={setComposerValue} onStop={() => void stream.stop()} onSubmit={sendMessage} />
       <ConversationHistoryDrawer
         conversations={conversationsQuery.data?.items ?? []}
         creating={false}
@@ -120,7 +122,7 @@ export function ChatPage() {
         selectedConversationId={selectedConversationId}
         onClose={() => setHistoryOpen(false)}
         onNewConversation={createNewConversation}
-        onSelectConversation={conversationId => { setSelectedConversationId(conversationId); stream.reset() }}
+        onSelectConversation={conversationId => { void stream.stop(); setSelectedConversationId(conversationId); stream.reset() }}
       />
     </section>
   )

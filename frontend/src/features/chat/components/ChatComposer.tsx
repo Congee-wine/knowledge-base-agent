@@ -9,10 +9,11 @@ type Props = {
   value: string
   sending: boolean
   onChange: (value: string) => void
+  onStop?: () => void
   onSubmit: (content: string) => void
 }
 
-export function ChatComposerSurface({ agent, value, sending, onChange, onSubmit }: Props) {
+export function ChatComposerSurface({ agent, value, sending, onChange, onStop, onSubmit }: Props) {
   const [content, setContent] = useState(value)
   const [useKnowledgeBase, setUseKnowledgeBase] = useState(true)
   useEffect(() => { setContent(value) }, [value])
@@ -41,6 +42,7 @@ export function ChatComposerSurface({ agent, value, sending, onChange, onSubmit 
         </div>
       )}
       loading={sending}
+      onCancel={onStop}
       placeholder="基于知识库提问，shift+enter换行"
       suffix={false}
       value={content}

@@ -17,6 +17,7 @@ from schemas.auth import UserResponse
 from schemas.streaming import PreviewStreamRequest
 from services import agents as agent_service
 from services import agent_preview
+from services.errors import stream_resume_unavailable
 
 
 router = APIRouter(prefix="/api", tags=["agents"])
@@ -81,6 +82,8 @@ def update_agent(agent_id: str, data: UpdateAgentRequest, current_user: Annotate
 
 @router.post("/agents/{agent_id}/preview/messages:stream")
 def stream_agent_preview(agent_id: str, data: PreviewStreamRequest, current_user: Annotated[UserResponse, Depends(get_current_user)]) -> StreamingResponse:
+    if data.after_sequence > 0:
+        raise stream_resume_unavailable()
     events = agent_preview.stream_preview(current_user.id, agent_id, data)
     return StreamingResponse(_preview_sse(events, data.request_id), media_type="text/event-stream")
 

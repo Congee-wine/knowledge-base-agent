@@ -9,6 +9,7 @@ let resolveStream: (() => void) | null = null
 let rejectStream: ((reason?: unknown) => void) | null = null
 
 vi.mock('../../../../api/chat', () => ({
+  interruptStreamMessage: vi.fn(),
   streamChat: vi.fn(async (options: { onEvent: (event: ChatStreamEvent) => void }) => {
     capturedOnEvent = options.onEvent
     return new Promise<void>((resolve, reject) => {
@@ -139,6 +140,22 @@ describe('useStreamingChat', () => {
     })
 
     act(() => { resolveStream?.() })
+  })
+
+  it('stops a conversation and persists the partial assistant answer', async () => {
+    const { interruptStreamMessage } = await import('../../../../api/chat')
+    const { result } = renderHook(() => useStreamingChat())
+    act(() => { void result.current.send({ agent: mockAgent, content: 'stop me', conversationId: null }) })
+    await waitFor(() => expect(result.current.messages).toHaveLength(2))
+    const requestId = getRequestId(result)
+    emit({ type: 'message_start', mode: 'conversation', requestId, sequence: 1, conversationId: 'conv-1', userMessageId: 'u-1', assistantMessageId: 'a-1' })
+    emit({ type: 'answer_delta', mode: 'conversation', requestId, sequence: 2, content: 'partial' })
+
+    await act(async () => { await result.current.stop() })
+
+    expect(interruptStreamMessage).toHaveBeenCalledWith('a-1', 'partial')
+    expect(result.current.sending).toBe(false)
+    expect(result.current.messages.find(message => message.id === 'a-1')?.generationStatus).toBe('interrupted')
   })
 
   it('keeps messages and records pending pair on message_end', async () => {
