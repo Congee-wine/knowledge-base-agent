@@ -1,5 +1,83 @@
 # 开发日志
 
+## 2026-07-27：阶段 2A 双模式 SSE 契约
+
+### 任务目标
+
+使编辑预览和正式聊天共享流式事件基础设施，同时通过显式运行模式保持草稿预览与持久化会话的边界。
+
+### 实现内容
+
+- 所有预览和正式 SSE 事件均增加 `mode: "preview" | "conversation"`。
+- 前端将 `message_start`、`message_end` 定义为按模式区分的联合类型：预览不读取数据库 ID，正式会话必须读取真实 ID。
+- 预览流只更新本地临时消息，不创建会话状态或待确认的持久化消息对。
+- 预览与正式服务在创建流响应前执行资源/权限校验；未知运行期异常转换为可消费的 `error` 事件。
+
+### 主要文件
+
+- `frontend/src/api/chat.ts`：双模式 SSE 事件验证。
+- `frontend/src/features/chat/hooks/useStreamingChat.ts`：按模式更新预览或正式会话状态。
+- `backend/routers/agents.py`、`backend/routers/conversations.py`：统一注入 SSE `mode`。
+- `backend/services/agent_preview.py`、`backend/services/conversations.py`：前置校验并映射未知运行异常。
+- `backend/tests/test_streaming_protocol.py`：覆盖两种模式的事件载荷和预览校验时机。
+
+### 技术方案
+
+使用 `mode` 作为可辨别字段，而不是通过是否存在 `conversationId` 或 `messageId` 猜测调用上下文。该方式使后续取消、重试和工具事件可以在同一协议下演进。
+
+### 接口或数据变化
+
+- 现有流式响应新增 `mode` 字段。
+- 无数据库、迁移、路由路径或依赖变更。
+
+### 验证情况
+
+- 通过：前端 `pnpm test -- --run`，21 项测试。
+- 通过：后端 `python -m unittest tests.test_streaming_protocol`，3 项测试。
+- 通过：相关 Python 模块 `py_compile`。
+- 通过：前端 `pnpm build`；沙箱内首次构建因既有 `highlight.js` 读取权限失败，获准在受限环境外复跑后成功。
+- 未执行：真实浏览器端和认证后的端到端流式请求联调。
+
+### 遗留问题
+
+- 阶段 2B 仍需实现正式会话的完整历史加载、取消终态和续流未支持的标准错误。
+- 阶段 2A 在浏览器端验证前保持“进行中”。
+
+## 2026-07-27：重排未完成的流式聊天与编辑预览阶段
+
+### 任务目标
+
+基于已完成的阶段 0/1 和已确认的双运行上下文原则，修正后续流式实施顺序，避免编辑页预览继续被当作正式会话处理。
+
+### 实现内容
+
+- 未修改应用代码。
+- 将未完成工作拆分为阶段 2A、2B、3、4、5：先定义预览/正式会话的 SSE 模式边界，再完成后端生命周期、前端状态机、页面联调和回归验收。
+- 明确预览使用草稿配置与页面内存历史，正式聊天使用已保存配置与持久化会话；两者共享 Agent Runtime，不共享会话存储状态。
+
+### 主要文件
+
+- `docs/features/agent-knowledge-platform/STREAMING_RUNTIME_PLAN.md`：记录重排后的阶段目标、协议边界和验收条件。
+- `docs/features/agent-knowledge-platform/CHANGELOG.md`：记录此次已确认的设计调整。
+- `docs/PROJECT_STATUS.md`：同步当前阶段与预览链路尚未验收的真实状态。
+
+### 技术方案
+
+使用 `mode: "preview" | "conversation"` 作为 SSE 的可辨别字段。预览事件不携带持久化会话/消息 ID，正式事件必须携带这些 ID；前端据此执行不同的状态更新分支。
+
+### 接口或数据变化
+
+无实际接口、数据库或依赖变更。本次仅更新未完成阶段的设计与验收要求。
+
+### 验证情况
+
+- 已完成文档一致性检查：阶段 0/1 保持已完成，阶段 2A 仍未实现。
+- 未执行代码测试或构建：本次没有修改代码。
+
+### 遗留问题
+
+- 需要在阶段 2A 实现并测试双模式 SSE 契约后，才能继续前端状态机与编辑预览联调。
+
 ## 2026-07-27：流式消息重复渲染修复
 
 ### 任务目标

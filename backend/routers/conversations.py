@@ -23,9 +23,9 @@ from services import conversations as conversation_service
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
 
 
-def _sse(events, request_id: str):
+def _sse(events, request_id: str, mode: str):
     for sequence, payload in enumerate(events, start=1):
-        data = {"requestId": request_id, "sequence": sequence, **payload}
+        data = {"requestId": request_id, "sequence": sequence, "mode": mode, **payload}
         yield f"id: {request_id}:{sequence}\nevent: {data['type']}\ndata: {json.dumps(data)}\n\n"
 
 
@@ -73,7 +73,7 @@ def stream_message(
     current_user: UserResponse = Depends(get_current_user),
 ) -> StreamingResponse:
     events = conversation_service.stream_message(current_user.id, agent_id, conversation_id, data.content, data.request_id)
-    return StreamingResponse(_sse(events, data.request_id), media_type="text/event-stream")
+    return StreamingResponse(_sse(events, data.request_id, "conversation"), media_type="text/event-stream")
 
 
 @router.get("/{conversation_id}", response_model=ConversationDetailResponse)

@@ -3,21 +3,25 @@ import { getStoredAccessToken } from '../lib/auth'
 import type { ChatAgent, Conversation, ConversationDetail, SendMessageResult } from '../types/chat'
 
 type StreamEventBase = {
+  mode: 'conversation' | 'preview'
   requestId: string
   sequence: number
 }
 
 export type ChatStreamEvent =
-  | (StreamEventBase & {
+  | ({
       type: 'message_start'
+      mode: 'conversation'
       conversationId: string
       userMessageId: string
       assistantMessageId: string
-    })
-  | (StreamEventBase & { type: 'status'; text: string })
+    } & Omit<StreamEventBase, 'mode'>)
+  | ({ type: 'message_start'; mode: 'preview' } & Omit<StreamEventBase, 'mode'>)
+  | (StreamEventBase & { type: 'status'; stage: 'generating'; text: string })
   | (StreamEventBase & { type: 'answer_delta'; content: string })
-  | (StreamEventBase & { type: 'message_end'; messageId: string; generationStatus: 'complete' })
-  | (StreamEventBase & { type: 'error'; code?: string; message: string; retryable?: boolean })
+  | ({ type: 'message_end'; mode: 'conversation'; messageId: string; generationStatus: 'complete' | 'interrupted' } & Omit<StreamEventBase, 'mode'>)
+  | ({ type: 'message_end'; mode: 'preview'; generationStatus: 'complete' | 'interrupted' } & Omit<StreamEventBase, 'mode'>)
+  | (StreamEventBase & { type: 'error'; code: string; message: string; retryable: boolean })
 
 type StreamOptions = {
   path: string
@@ -57,13 +61,19 @@ function readEvent(payload: unknown): ChatStreamEvent {
   const requestId = readRequiredString(event, 'requestId')
   const sequence = event.sequence
   const type = readRequiredString(event, 'type')
+  const mode = readRequiredString(event, 'mode')
   if (typeof sequence !== 'number' || !Number.isInteger(sequence) || sequence < 1) {
     throw new Error('流式事件 sequence 无效')
   }
+  if (mode !== 'conversation' && mode !== 'preview') {
+    throw new Error('流式事件 mode 无效')
+  }
 
   if (type === 'message_start') {
+    if (mode === 'preview') return { type, mode, requestId, sequence }
     return {
       type,
+      mode,
       requestId,
       sequence,
       conversationId: readRequiredString(event, 'conversationId'),
@@ -71,20 +81,26 @@ function readEvent(payload: unknown): ChatStreamEvent {
       assistantMessageId: readRequiredString(event, 'assistantMessageId'),
     }
   }
-  if (type === 'status') return { type, requestId, sequence, text: readRequiredString(event, 'text') }
-  if (type === 'answer_delta') return { type, requestId, sequence, content: readString(event, 'content') }
+  if (type === 'status') {
+    if (event.stage !== 'generating') throw new Error('流式状态阶段无效')
+    return { type, mode, requestId, sequence, stage: 'generating', text: readRequiredString(event, 'text') }
+  }
+  if (type === 'answer_delta') return { type, mode, requestId, sequence, content: readString(event, 'content') }
   if (type === 'message_end') {
-    if (event.generationStatus !== 'complete') throw new Error('流式结束状态无效')
-    return { type, requestId, sequence, messageId: readRequiredString(event, 'messageId'), generationStatus: 'complete' }
+    if (event.generationStatus !== 'complete' && event.generationStatus !== 'interrupted') throw new Error('流式结束状态无效')
+    if (mode === 'preview') return { type, mode, requestId, sequence, generationStatus: event.generationStatus }
+    return { type, mode, requestId, sequence, messageId: readRequiredString(event, 'messageId'), generationStatus: event.generationStatus }
   }
   if (type === 'error') {
+    if (typeof event.retryable !== 'boolean') throw new Error('流式错误事件 retryable 无效')
     return {
       type,
+      mode,
       requestId,
       sequence,
       message: readRequiredString(event, 'message'),
-      ...(typeof event.code === 'string' ? { code: event.code } : {}),
-      ...(typeof event.retryable === 'boolean' ? { retryable: event.retryable } : {}),
+      code: readRequiredString(event, 'code'),
+      retryable: event.retryable,
     }
   }
   throw new Error(`不支持的流式事件类型：${type}`)

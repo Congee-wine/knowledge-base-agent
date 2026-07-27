@@ -15,6 +15,7 @@ describe('streamChat', () => {
     localStorage.setItem('access_token', 'test-token')
     const event: ChatStreamEvent = {
       type: 'message_start',
+      mode: 'conversation',
       requestId: 'request-1',
       sequence: 1,
       conversationId: 'conversation-1',
@@ -33,6 +34,7 @@ describe('streamChat', () => {
     localStorage.setItem('access_token', 'test-token')
     const malformedEvent = {
       type: 'message_start',
+      mode: 'conversation',
       requestId: 'request-1',
       sequence: 1,
       conversationId: 'conversation-1',
@@ -42,5 +44,21 @@ describe('streamChat', () => {
 
     await expect(streamChat({ body: { content: 'hello' }, onEvent: vi.fn(), path: '/stream' }))
       .rejects.toThrow('流式事件缺少有效字段：assistantMessageId')
+  })
+
+  it('parses preview events without persisted message IDs', async () => {
+    localStorage.setItem('access_token', 'test-token')
+    const events: ChatStreamEvent[] = [
+      { type: 'message_start', mode: 'preview', requestId: 'request-1', sequence: 1 },
+      { type: 'status', mode: 'preview', requestId: 'request-1', sequence: 2, stage: 'generating', text: '正在生成回答' },
+      { type: 'answer_delta', mode: 'preview', requestId: 'request-1', sequence: 3, content: '预览回答' },
+      { type: 'message_end', mode: 'preview', requestId: 'request-1', sequence: 4, generationStatus: 'complete' },
+    ]
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(events.map(sseFrame).join(''), { status: 200 })))
+    const received: ChatStreamEvent[] = []
+
+    await streamChat({ body: { content: 'hello' }, onEvent: item => received.push(item), path: '/stream' })
+
+    expect(received).toEqual(events)
   })
 })

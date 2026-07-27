@@ -91,7 +91,7 @@ export function useStreamingChat() {
       : { content, requestId }
 
     try {
-      await streamChat({ body, path, onEvent: event => applyEvent(event, requestId, setState, lastSequence) })
+      await streamChat({ body, path, onEvent: event => applyEvent(event, requestId, preview ? 'preview' : 'conversation', setState, lastSequence) })
     } catch (error) {
       const text = error instanceof Error ? error.message : '发送失败，请稍后重试'
       setState(current => ({ ...current, error: text, messages: updateAssistant(current.messages, current.assistantMessageId, requestId, message => ({ ...message, generationStatus: 'failed' })), sending: false }))
@@ -101,8 +101,8 @@ export function useStreamingChat() {
   return { ...state, acknowledgePersistedPair, reset, send }
 }
 
-function applyEvent(event: ChatStreamEvent, requestId: string, setState: Dispatch<SetStateAction<StreamState>>, lastSequence: MutableRefObject<number>) {
-  if (event.requestId !== requestId || event.sequence <= lastSequence.current) return
+function applyEvent(event: ChatStreamEvent, requestId: string, mode: ChatStreamEvent['mode'], setState: Dispatch<SetStateAction<StreamState>>, lastSequence: MutableRefObject<number>) {
+  if (event.requestId !== requestId || event.mode !== mode || event.sequence <= lastSequence.current) return
   lastSequence.current = event.sequence
   setState(current => {
     if (event.type === 'status') return { ...current, statusText: event.text }
@@ -110,6 +110,7 @@ function applyEvent(event: ChatStreamEvent, requestId: string, setState: Dispatc
     if (event.type === 'answer_delta') return { ...current, messages: updateAssistant(current.messages, current.assistantMessageId, requestId, message => ({ ...message, content: message.content + event.content })) }
 
     if (event.type === 'message_start') {
+      if (event.mode === 'preview') return current
       return {
         ...current,
         conversation: { agentId: '', createdAt: '', id: event.conversationId, title: null, updatedAt: '' },
@@ -124,6 +125,14 @@ function applyEvent(event: ChatStreamEvent, requestId: string, setState: Dispatc
     }
 
     if (event.type === 'message_end') {
+      if (event.mode === 'preview') {
+        return {
+          ...current,
+          messages: updateAssistant(current.messages, null, requestId, message => ({ ...message, generationStatus: event.generationStatus })),
+          sending: false,
+          statusText: null,
+        }
+      }
       const userMessageId = current.userMessageId
       const assistantMessageId = current.assistantMessageId
       const conversationId = current.conversation?.id

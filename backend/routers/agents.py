@@ -24,7 +24,7 @@ router = APIRouter(prefix="/api", tags=["agents"])
 
 def _preview_sse(events, request_id: str):
     for sequence, payload in enumerate(events, start=1):
-        data = {"requestId": request_id, "sequence": sequence, **payload}
+        data = {"requestId": request_id, "sequence": sequence, "mode": "preview", **payload}
         yield f"id: {request_id}:{sequence}\nevent: {data['type']}\ndata: {json.dumps(data)}\n\n"
 
 

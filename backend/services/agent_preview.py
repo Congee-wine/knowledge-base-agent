@@ -13,11 +13,17 @@ def stream_preview(user_id: str, agent_id: str, data: PreviewStreamRequest) -> I
     if agent.kind != "personal":
         raise ValueError("Only personal agents can be previewed")
     history: list[ModelMessage] = [{"role": item.role, "content": item.content} for item in data.history]
-    yield {"type": "message_start", "mode": "preview"}
-    yield {"type": "status", "stage": "generating", "text": "正在生成回答"}
-    try:
-        for delta in stream_answer(data.draft_agent.system_prompt, history, data.content):
-            yield {"type": "answer_delta", "content": delta}
-        yield {"type": "message_end", "generationStatus": "complete"}
-    except DeepSeekError:
-        yield {"type": "error", "code": "MODEL_UNAVAILABLE", "message": "模型服务暂时不可用", "retryable": True}
+
+    def events() -> Iterator[dict[str, object]]:
+        yield {"type": "message_start"}
+        yield {"type": "status", "stage": "generating", "text": "正在生成回答"}
+        try:
+            for delta in stream_answer(data.draft_agent.system_prompt, history, data.content):
+                yield {"type": "answer_delta", "content": delta}
+            yield {"type": "message_end", "generationStatus": "complete"}
+        except DeepSeekError:
+            yield {"type": "error", "code": "MODEL_UNAVAILABLE", "message": "模型服务暂时不可用", "retryable": True}
+        except Exception:
+            yield {"type": "error", "code": "PREVIEW_RUNTIME_FAILED", "message": "预览运行失败，请稍后重试", "retryable": True}
+
+    return events()
