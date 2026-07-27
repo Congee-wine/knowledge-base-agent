@@ -8,7 +8,6 @@ import { ApiError } from './api/http'
 import { clearStoredSession, getStoredUser, getTokenExpiresAt, getStoredAccessToken, isAuthenticationRejected, refreshSession } from './lib/auth'
 import { AuthPage } from './pages/AuthPage'
 import { AiManagerPage } from './pages/AiManagerPage'
-import { EmptyPage } from './pages/EmptyPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { GuestOnly } from './routes/GuestOnly'
 import { RequireAuth } from './routes/RequireAuth'
@@ -28,6 +27,9 @@ const AgentListPage = lazy(async () =>
 )
 const ChatPage = lazy(async () =>
   import('./pages/ChatPage').then(module => ({ default: module.ChatPage })),
+)
+const KnowledgeBasePage = lazy(async () =>
+  import('./pages/KnowledgeBasePage').then(module => ({ default: module.KnowledgeBasePage })),
 )
 
 function RouteLoadingFallback() {
@@ -103,7 +105,7 @@ function App() {
             <Route path={routes.app.agents} element={<AgentListPage />} />
             <Route path={routes.app.agentNew} element={<Navigate to={routes.app.agents} replace />} />
             <Route path="/app/agents/:agentId/edit" element={<AgentEditorPage />} />
-            <Route path={routes.app.knowledgeBases} element={<EmptyPage />} />
+            <Route path={routes.app.knowledgeBases} element={<KnowledgeBasePage />} />
           </Route>
         </Route>
         <Route path="*" element={<NotFoundPage />} />
