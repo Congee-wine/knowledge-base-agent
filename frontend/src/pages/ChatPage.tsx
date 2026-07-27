@@ -105,12 +105,12 @@ export function ChatPage() {
       </header>
       {conversationsQuery.isError && <Alert className="mx-8" type="warning" showIcon message="历史会话加载失败" action={<Button size="small" onClick={() => void conversationsQuery.refetch()}>重试</Button>} />}
       {conversationDetailQuery.isError && <Alert className="mx-8" type="warning" showIcon message="会话详情加载失败" action={<Button size="small" onClick={() => void conversationDetailQuery.refetch()}>重试</Button>} />}
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {selectedConversationId === null && stream.messages.length === 0
           ? <ChatWelcome agent={agent} onPromptClick={setComposerValue} />
           : conversationDetailQuery.isPending && stream.messages.length === 0
             ? <ChatHistorySkeleton />
-            : <ChatMessageList messages={displayedMessages} pendingAssistant={false} statusText={stream.statusText} />}
+            : <ChatMessageList messages={displayedMessages} pendingAssistant={false} scrollable statusText={stream.statusText} />}
         {stream.error && <Alert className="mx-auto mt-3 w-full max-w-[810px]" message={stream.error} showIcon type="error" />}
       </div>
       <ChatComposer agent={agent} sending={stream.sending} value={composerValue} onChange={setComposerValue} onStop={() => void stream.stop()} onSubmit={sendMessage} />
