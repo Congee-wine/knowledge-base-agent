@@ -1,5 +1,44 @@
 # 开发日志
 
+## 2026-07-27：流式聊天阶段收尾与知识库实施准备
+
+### 任务目标
+
+记录真实验收结果，停止未稳定的聊天续流改造，并为知识库异步文档处理确认运行环境和实施顺序。
+
+### 实现内容
+
+- 用户已完成直接 SSE 正常回答和停止生成的浏览器验收。
+- Redis/RQ 聊天事件缓冲、后台聊天生成和断线续流未通过真实端到端验收，相关代码已撤回；不将其标记为完成。
+- 为 Docker 文档 Worker 增加独立的本地环境文件覆盖：本机 API 继续用 `127.0.0.1` 访问 SSH 隧道，Worker 用 `host.docker.internal` 访问同一隧道。
+- 已创建知识库阶段的当前执行计划，先完成资料树、上传与异步处理，再接入检索和 LangGraph。
+
+### 主要文件
+
+- `docker-compose.infrastructure.yml`：Worker 按顺序加载基础和 Worker 专用环境文件。
+- `backend/.env.worker.example`：不含真实凭证的 Worker 配置模板。
+- `docs/features/agent-knowledge-platform/IMPLEMENTATION_PLAN.md`：知识库阶段 3.0 至 3.5 的执行计划。
+- `docs/features/agent-knowledge-platform/STREAMING_RUNTIME_PLAN.md`：标注聊天续流已延后。
+
+### 技术方案
+
+聊天继续采用已验收的直接 SSE。耗时的文档解析、切分和向量化由 Docker Linux RQ Worker 执行；聊天检索将在资料处理稳定后作为 LangGraph 的线性检索节点接入。
+
+### 接口或数据变化
+
+无业务接口或数据库结构变化。新增本地环境文件约定；该文件不提交版本库。
+
+### 验证情况
+
+- 用户完成正常直接 SSE 回答与停止生成的浏览器验收。
+- Docker Worker 内执行数据库连通检查，返回 `database connection ok`。
+- 本轮只更新文档和本地运行配置，未执行知识库业务实现测试。
+
+### 遗留问题
+
+- 知识库数据迁移、上传、解析、向量化、检索、引用与页面均未开始。
+- 聊天断线续流保留为后续独立阶段，重新实施前必须完成真实端到端环境验证。
+
 ## 2026-07-27：编辑预览助手回复左对齐
 
 ### 任务目标

@@ -1,5 +1,7 @@
 # 项目当前状态
 
+> 2026-07-27 更新：用户已完成直接 SSE 聊天与停止生成的浏览器验收。未通过端到端验收的 Redis/RQ 聊天续流实现已撤回并延后；Docker 文档 Worker 已通过 SSH 隧道连通远程 PostgreSQL（`database connection ok`）。项目下一阶段进入知识库的设计复核与实现准备，首批目标为私有资料树、上传、异步解析、切分、`bge-m3` 向量化与受控检索。
+
 > 2026-07-27 更新：本机 API 通过 SSH 隧道访问远程 PostgreSQL，Docker Worker 改用独立的 `backend/.env.worker` 经 `host.docker.internal` 访问同一隧道；当前仅用于后续文档处理任务，聊天保持直接 SSE，Redis/RQ 断线续流仍明确延后。
 
 > 2026-07-27 更新：修复生成中会话详情 500。接口响应模型现包含 `generating` 状态；新会话在收到 `message_start` 后立即进入侧边栏缓存，无需等待模型结束即可切走并返回。前端 28 项测试、后端会话服务 6 项测试和生产构建通过，待浏览器验证两个会话并行切换。
