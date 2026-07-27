@@ -96,3 +96,8 @@ users ──< agents ──< conversations ──< messages ──< message_cita
 - 所有新表通过版本化迁移创建，替代新增业务表的启动时 DDL。
 - 原始对象仅按 `storage_key` 引用；下载通过服务端鉴权生成临时授权，不向前端返回永久地址。
 - 日志、错误和引用不得包含对象存储凭据、模型密钥或完整受限资料。
+## 运行态 Redis 数据（已确认，未实现）
+
+本阶段不新增 PostgreSQL 表或迁移。每个正式会话生成使用助手消息 ID 作为 Redis 运行对象标识，包含 `meta` Hash、`events` Stream 和 `cancel` 标记三个键，统一 TTL 为 1800 秒。事件 Stream 最多保留 4096 条；若恢复游标早于首条缓存事件，则接口返回 `STREAM_RESUME_UNAVAILABLE`，客户端回读 PostgreSQL 中已保存的消息状态。
+
+Redis 中不得存储访问令牌、模型密钥或用户上传文件。事件正文仅在恢复窗口中临时保存，窗口结束后由 Redis TTL 自动清除；正式回答内容只以 PostgreSQL 中的 `messages.content` 为准。

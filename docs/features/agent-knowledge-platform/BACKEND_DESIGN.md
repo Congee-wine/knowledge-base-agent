@@ -65,3 +65,8 @@ START
 ## 6. 依赖与部署
 
 聊天模型采用 DeepSeek 的 OpenAI 兼容 Chat Completions 接口；实施前仍需锁定具体聊天模型。Embedding 使用本地 `BAAI/bge-m3`：Worker 进程启动时加载模型，批量编码文档分块和查询文本，并将向量写入 pgvector；模型权重与推理不通过云端 Embedding API。还需评估并锁定：LangChain 对应集成、LangGraph、BGE 推理库、PyMuPDF、`python-docx`、S3 客户端、Redis 客户端、后台任务框架和版本化迁移工具。开发与部署需分别运行 API、Worker、PostgreSQL/pgvector、Redis 和 S3 兼容对象存储。真实模型密钥只通过环境变量注入。
+## 7. Redis 事件缓冲与 RQ 生成运行时（已确认，未实现）
+
+正式会话的首次请求由会话服务创建数据库消息对、创建 Redis 运行元数据并提交 RQ 任务；路由只负责参数、认证和 SSE 响应。`chat_generation` 服务在 Worker 中调用 `agent_runtime.stream_answer`，将可公开展示的状态与增量追加至 Redis Stream，并在终态时更新 PostgreSQL 消息。`stream_events` 仓储隔离 Redis 协议、键名、TTL、序号和补读逻辑。
+
+恢复订阅不调用模型也不写数据库：它先验证当前用户对助手消息及会话的所有权，再由事件仓储按 `afterSequence` 读取和阻塞等待新事件。取消接口仅写 Redis 取消标记，Worker 负责写入最终 `interrupted` 状态，避免客户端断线导致部分内容丢失。

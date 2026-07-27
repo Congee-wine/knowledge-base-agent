@@ -150,3 +150,25 @@
 - 资料树响应节点包含 `id`、`parentId`、`nodeType`、`name`、`status`、`children`；文件的 `status` 为 `processing`、`ready` 或 `failed`。
 - 上传使用 `multipart/form-data`，字段为 `parentId` 和 `file`；仅接受 PDF、TXT、`.docx` 和 Markdown 的 MIME/文件签名，超出服务端配置的大小返回 `FILE_TOO_LARGE`。
 - 重新处理仅允许 `failed` 文件；处理中或可用文件分别返回 `FILE_PROCESSING`、`FILE_ALREADY_READY`。
+## API-008A：正式会话 SSE 恢复订阅（已确认，未实现）
+
+### `GET /api/conversations/messages/{assistantMessageId}:stream`
+
+仅用于正式会话的已创建助手消息。认证方式沿用 Bearer Token。
+
+查询参数：
+
+- `afterSequence`：非负整数，默认 `0`；服务端仅返回 sequence 大于该值的事件。
+
+成功时返回 `text/event-stream`。事件字段和 API-008 相同，必须保留原始 `requestId`、连续 `sequence` 与 `mode="conversation"`。
+
+| 条件 | 结果 |
+|---|---|
+| 运行仍在生成且缓存有效 | 先补发缺失事件，再保持订阅直到终态或客户端断开。 |
+| 已完成/中断/失败且缓存有效 | 补发缺失事件后关闭连接。 |
+| `afterSequence` 早于缓存首事件、缓存过期或运行不存在 | `409 STREAM_RESUME_UNAVAILABLE`。 |
+| 消息不属于当前用户 | 与资源不存在一致的 `404 RESOURCE_NOT_FOUND`。 |
+
+### API-008 中断行为调整
+
+`POST /api/conversations/messages/{assistantMessageId}:interrupt` 继续要求认证，但不再接收或信任浏览器上传的部分回答。成功返回 `202`，表示取消标记已提交；Worker 写入 `message_end(generationStatus="interrupted")` 后，客户端通过 SSE 或会话回读获得最终内容。

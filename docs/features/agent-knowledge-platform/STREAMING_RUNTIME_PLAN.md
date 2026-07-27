@@ -269,3 +269,89 @@ Redis 保存 `requestId` 对应的短期流状态和事件缓冲区，TTL 建议
 2. 阶段 A 的每用户并发和限流阈值。
 3. 正式流生成中的部分回答是否按固定间隔写入数据库，或仅在结束/取消时写入。
 4. 预览流的 Redis 缓存 TTL；本计划建议 10 分钟。
+## 2026-07-27 阶段 5：Redis 事件缓冲与断线续流（已确认，未实现）
+
+### 5.1 已确认范围与不可变约束
+
+- 仅正式会话支持断线续流；编辑预览保持页面内存态、零持久化且不提供恢复接口。
+- 恢复窗口固定为 30 分钟。窗口过期前，客户端可用 `assistantMessageId` 和 `afterSequence` 补收事件；过期后返回 `STREAM_RESUME_UNAVAILABLE`，客户端回读会话详情。
+- Redis 是运行态事件缓存，不是正式消息存储。PostgreSQL 中的 `messages.content` 与 `generation_status` 仍是最终事实来源。
+- 继续使用现有 RQ 基础设施。模型调用必须在 Worker 中执行，不能继续绑定首次 POST 请求的生成器。
+- 不新增知识库、联网、文件上传、引用或思维链展示；不改变现有会话级单生成约束。
+
+### 5.2 运行模型
+
+1. 首次 `POST /api/conversations/messages:stream` 在数据库事务中复用或创建用户消息与 `generating` 助手消息。
+2. 服务层创建 Redis 运行元数据和 `message_start` 事件后，将仅包含 ID 与文本快照的任务投入 `chat-generation` 队列。
+3. 当前 HTTP 请求与后续恢复请求都只订阅 Redis 事件流；断开订阅不会取消 RQ 任务。
+4. Worker 读取已确认的会话历史和智能体配置，生成 `status`、`answer_delta` 与终态事件；终态前将完整或已取消的部分回答写回 PostgreSQL。
+5. 客户端以单调递增的 `sequence` 去重、合并和恢复。收到终态事件或回读到非 `generating` 消息后停止恢复。
+
+### 5.3 Redis 键、字段与生命周期
+
+所有键仅使用助手消息 UUID，不在键名中放入用户输入或密钥。
+
+| 键 | 类型 | 内容 | TTL |
+|---|---|---|---|
+| `chat:stream:{assistantMessageId}:meta` | Hash | `owner_user_id`、`conversation_id`、`request_id`、`status`、`last_sequence`、`rq_job_id` | 1800 秒 |
+| `chat:stream:{assistantMessageId}:events` | Stream | `sequence`、`type`、`payload`（JSON） | 1800 秒 |
+| `chat:stream:{assistantMessageId}:cancel` | String | 取消请求标记 | 1800 秒 |
+
+- 每次写入事件刷新同一运行对象的 TTL；终态事件也保留至窗口结束。
+- 单个运行最多保留 4096 个事件。恢复请求的 `afterSequence` 早于缓存首条事件时，服务端返回 `STREAM_RESUME_UNAVAILABLE`，不得静默丢失事件。
+- Redis 元数据与事件流只能通过会话所有权校验后读取；前端不得直接连接 Redis。
+
+默认配置：`STREAM_EVENT_TTL_SECONDS=1800`、`STREAM_EVENT_MAX_EVENTS=4096`、`STREAM_SUBSCRIPTION_BLOCK_MS=15000`、`CHAT_GENERATION_JOB_TIMEOUT_SECONDS=300`。这些值必须通过 `backend/config.py` 的环境变量读取和正整数校验，不能散落为代码字面量。
+
+### 5.4 接口与状态契约
+
+- 首次发送继续使用 `POST /api/conversations/messages:stream`，请求体保留 `requestId` 与 `content`，不再因 `afterSequence > 0` 直接拒绝，而是仅用于同一次首次订阅的补读。
+- 新增 `GET /api/conversations/messages/{assistantMessageId}:stream?afterSequence={n}`。仅允许消息所属会话的当前用户订阅；`n` 默认为 0。
+- `POST /api/conversations/messages/{assistantMessageId}:interrupt` 改为请求取消，不再以浏览器传入的文本作为最终部分回答来源。接口返回 `202`，Worker 观察取消标记后写入 `interrupted` 终态与已生成内容。
+- SSE 事件保持 `requestId`、`sequence`、`mode`、`message_start`、`status`、`answer_delta`、`message_end`、`error` 的既有字段语义。正式会话的所有恢复事件必须使用原始 requestId 与连续 sequence。
+- 运行不存在、超出恢复窗口、事件已截断或用户无权访问时使用 `STREAM_RESUME_UNAVAILABLE`；越权不得泄露消息是否存在。
+
+### 5.5 模块与文件执行清单
+
+| 文件 | 动作 | 职责 |
+|---|---|---|
+| `backend/config.py` | 修改 | 新增恢复窗口、事件上限、订阅阻塞时长和 RQ 任务超时配置及校验。 |
+| `backend/workers/queue.py` | 修改 | 增加 `chat-generation` 队列与队列构造函数。 |
+| `backend/workers/runner.py` | 修改 | 同时消费文档处理与聊天生成队列。 |
+| `backend/workers/tasks.py` | 修改 | 新增 RQ 聊天生成任务、失败收敛与取消检查入口。 |
+| `backend/repositories/stream_events.py` | 新增 | 仅负责 Redis Hash/Stream/取消标记的读写、序号、TTL 与补读。 |
+| `backend/services/chat_generation.py` | 新增 | 编排数据库消息、历史、模型流、Redis 事件及终态持久化。 |
+| `backend/services/conversations.py` | 修改 | 只负责开始运行、提交任务、订阅授权和请求取消；移除直接模型生成循环。 |
+| `backend/routers/conversations.py` | 修改 | 保持首次流接口，新增恢复订阅并返回符合契约的 SSE。 |
+| `backend/schemas/streaming.py` | 修改 | 定义恢复查询、取消响应及 Worker 输入的类型边界。 |
+| `backend/services/errors.py` | 修改 | 明确恢复过期、事件缺失、队列不可用等稳定错误码。 |
+| `frontend/src/api/chat.ts` | 修改 | 增加恢复订阅、网络错误分类和 409 恢复失败映射。 |
+| `frontend/src/features/chat/hooks/useStreamingChat.ts` | 修改 | 为每个会话保存最后 sequence、恢复状态、重连控制器和终态清理。 |
+| `backend/tests/*` 与 `frontend/src/**/__tests__/*` | 新增/修改 | 覆盖后端事件存储、任务生命周期、接口授权和前端去重恢复。 |
+
+不修改现有迁移：`messages.client_request_id` 已唯一标识运行，`reply_to_message_id` 可定位消息对，`generation_status` 已覆盖 `generating`、`complete`、`interrupted`、`failed`。
+
+### 5.6 代码级执行顺序
+
+1. 先完成 `stream_events` 仓储的纯 Redis 测试：创建运行、追加事件、严格序号、补读、首事件截断、TTL 与取消标记。
+2. 再实现 `chat_generation` 服务和 RQ 任务：运行开始后先写 `message_start`，再写 `status`，模型每个增量写入 Redis，终态先持久化数据库再写终态 SSE 事件。
+3. 修改会话服务和路由，首次请求仅创建/复用消息对、提交任务并订阅；恢复请求不创建消息、不调用模型、不重复入队。
+4. 将中断接口改为设置取消标记。Worker 在每个模型增量前后检查标记；取消优先于尚未写入的完成终态。
+5. 前端先实现无 UI 变化的 sequence 去重与恢复函数，再接入自动恢复提示和页面重新进入时对 `generating` 消息的恢复订阅。
+6. 最后执行 Redis/RQ/PostgreSQL 联调、断网浏览器验收和回归构建；任何一项未通过都不得将阶段标记为已完成。
+
+### 5.7 失败、并发与安全规则
+
+- `requestId` 重放必须复用同一消息对和同一运行元数据；不得创建第二个 RQ 任务。
+- 同会话新消息继续由数据库锁与 `generating` 状态拒绝；不同会话可独立生成与恢复。
+- RQ 任务异常、模型异常和任务超时必须写入 `failed` 状态与 SSE `error` 终态，不能让消息永久停在 `generating`。
+- Redis 或队列不可用时，首次请求返回可识别的 503 错误；不得创建无法执行的 `generating` 消息。
+- 客户端断开、刷新、切换会话不触发取消；只有显式中断接口写入取消标记。
+- Worker 使用数据库中已归属的 ID 加载数据，恢复订阅再次按当前用户校验所有权。日志仅记录 requestId、消息 ID、序号、耗时和错误码，不记录消息正文或模型密钥。
+
+### 5.8 验收与交付门槛
+
+- 自动化：Redis 仓储、RQ 任务、会话服务、恢复接口、越权、重复恢复、取消竞争和前端 sequence 合并均有测试。
+- 集成：真实 Redis、RQ Worker、PostgreSQL 与 DeepSeek 测试调用可完成首发、断开、恢复、终止和失败收敛。
+- 浏览器：刷新、网络离线后恢复、切换双会话、取消后恢复、30 分钟过期和编辑预览隔离均按验收标准通过。
+- 文档：接口、后端设计、数据设计、验收标准、项目状态和开发日志只记录已验证的实际结果。

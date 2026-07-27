@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { ConfigProvider } from 'antd'
 import { useQuery } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
@@ -8,9 +8,6 @@ import { ApiError } from './api/http'
 import { clearStoredSession, getStoredUser, getTokenExpiresAt, getStoredAccessToken, isAuthenticationRejected, refreshSession } from './lib/auth'
 import { AuthPage } from './pages/AuthPage'
 import { AiManagerPage } from './pages/AiManagerPage'
-import { AgentEditorPage } from './pages/AgentEditorPage'
-import { AgentListPage } from './pages/AgentListPage'
-import { ChatPage } from './pages/ChatPage'
 import { EmptyPage } from './pages/EmptyPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { GuestOnly } from './routes/GuestOnly'
@@ -19,6 +16,27 @@ import { routes } from './routes/paths'
 import { useAuthStore } from './stores/auth'
 
 const REFRESH_BEFORE_EXPIRY_MS = 3 * 60 * 1000
+const AgentEditorPage = lazy(async () =>
+  import('./pages/AgentEditorPage').then(module => ({
+    default: module.AgentEditorPage,
+  })),
+)
+const AgentListPage = lazy(async () =>
+  import('./pages/AgentListPage').then(module => ({
+    default: module.AgentListPage,
+  })),
+)
+const ChatPage = lazy(async () =>
+  import('./pages/ChatPage').then(module => ({ default: module.ChatPage })),
+)
+
+function RouteLoadingFallback() {
+  return (
+    <div className="grid h-full min-h-screen place-items-center bg-slate-50 text-sm text-slate-500">
+      正在加载页面…
+    </div>
+  )
+}
 
 function App() {
   const user = useAuthStore(state => state.user)
@@ -70,7 +88,8 @@ function App() {
 
   return <ConfigProvider theme={{ token: { colorPrimary: '#4f6cff', borderRadius: 10, fontFamily: 'Microsoft YaHei, PingFang SC, Arial, sans-serif' } }}>
     <BrowserRouter>
-      <Routes>
+      <Suspense fallback={<RouteLoadingFallback />}>
+          <Routes>
         <Route path={routes.home} element={<Navigate to={routes.app.chat} replace />} />
         <Route element={<GuestOnly user={authenticatedUser} />}>
           <Route path={routes.login} element={<AuthPage mode="login" onAuthenticated={setUser} />} />
@@ -88,7 +107,8 @@ function App() {
           </Route>
         </Route>
         <Route path="*" element={<NotFoundPage />} />
-      </Routes>
+          </Routes>
+      </Suspense>
     </BrowserRouter>
   </ConfigProvider>
 }
