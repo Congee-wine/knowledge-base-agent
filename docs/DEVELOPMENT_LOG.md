@@ -2008,3 +2008,78 @@ Ant Design X 仅承担 AI 交互展示，避免与业务接口、鉴权和状态
 
 - 停止生成、Redis 续流、幂等回放和浏览器端人工验收未完成。
 - 受控处理摘要、检索步骤和引用仍是后续阶段，当前不展示模型原始思维链。
+
+# 2026-07-27：聊天生成过程组件调整
+
+### 任务目标
+
+将位置不当的“正在生成回答”文字替换为 Ant Design X 组件，并为未来知识库检索和联网等可审计运行步骤保留前端扩展边界。
+
+### 实现内容
+
+- 选择 Ant Design X `ThoughtChain`，并将其置于正在生成的助手消息内部，而非独立显示在消息列表上方。
+- 新增 `ChatRunSummary`，使用受控步骤数据渲染运行过程；当前 SSE 协议只提供“正在生成回答”，因此不会虚构检索或联网节点。
+- 定义运行步骤的加载、成功、失败和中止状态，以便后续 SSE 契约在真实接入知识库/联网工具后追加相应节点。
+- 保持模型原始思维链不对用户展示；该组件仅用于展示可解释、可审计的执行摘要。
+
+### 主要文件
+
+- `frontend/src/features/chat/components/ChatRunSummary.tsx`：Ant Design X `ThoughtChain` 的受控运行摘要展示。
+- `frontend/src/features/chat/components/ChatMessageList.tsx`：将生成态与对应助手消息绑定，移除列表上方的游离状态文案。
+- `frontend/src/features/chat/components/__tests__/ChatMessageList.test.tsx`：验证生成态运行摘要位于助手消息中。
+- `frontend/src/style.css`：运行摘要的紧凑视觉样式。
+
+### 技术方案
+
+采用 `ThoughtChain` 而不是 `Think`：聊天运行会随模型调用、知识库检索、网页搜索与引用整理逐步产生多个受控事件，链式节点可表达其顺序及完成状态。该方案只呈现后端明确产生的运行摘要，不暴露或模拟模型内部推理。
+
+### 接口或数据变化
+
+无。本次未改动 SSE 协议、后端接口、数据库迁移或依赖；后续新增检索/联网事件时，可在既有运行步骤模型中映射为真实节点。
+
+### 验证情况
+
+- 通过：在 `frontend/` 执行 `pnpm test -- ChatMessageList.test.tsx`，3 项测试通过。
+- 通过：在 `frontend/` 执行 `pnpm build`（`tsc && vite build`）。
+- 警告：Vite 报告压缩后主包超过 500 kB；现有依赖带来的警告，未因本次新增组件而解决。
+- 未执行：浏览器端真实 SSE 流式视觉验收。
+
+### 遗留问题
+
+- 当前后端仅发送 `generating` 状态；知识库检索、联网搜索、引用整理等步骤需要在相应能力真正接入时扩展 SSE 事件并完成页面联调。
+
+# 2026-07-27：生成中思考链闪烁样式调整
+
+### 任务目标
+
+将生成中思考链的蓝色 loading 圆圈替换为参考图中的轻量 `blink` 样式。
+
+### 实现内容
+
+- 生成中节点启用 Ant Design X `ThoughtChain` 的 `blink` 属性。
+- 生成中节点改用中性提示图标，不再使用 `loading` 状态图标；标题在生成期间闪烁。
+- 完成、失败和中止节点继续使用对应的状态图标，保证后续多步骤运行摘要可识别。
+
+### 主要文件
+
+- `frontend/src/features/chat/components/ChatRunSummary.tsx`：运行节点的 blink 与图标状态映射。
+- `frontend/src/style.css`：进行中提示图标改为中性色。
+- `frontend/src/features/chat/components/__tests__/ChatMessageList.test.tsx`：验证生成节点启用 blink 且不传递 loading 状态。
+
+### 技术方案
+
+保留 `ThoughtChain` 作为运行过程容器，仅针对进行中节点调整视觉语义。这样不会牺牲未来检索、联网与引用等多步骤状态的顺序和完成态表达。
+
+### 接口或数据变化
+
+无。
+
+### 验证情况
+
+- 通过：在 `frontend/` 执行 `pnpm test -- ChatMessageList.test.tsx`，3 项测试通过。
+- 通过：在 `frontend/` 执行 `pnpm build`（`tsc && vite build`）。
+- 警告：Vite 报告压缩后主包超过 500 kB。
+
+### 遗留问题
+
+- 仍需在浏览器实际流式回复中确认闪烁节奏与图标视觉效果。

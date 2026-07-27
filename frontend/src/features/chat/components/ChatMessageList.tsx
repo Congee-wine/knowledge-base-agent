@@ -5,6 +5,7 @@ import { XMarkdown } from '@ant-design/x-markdown'
 import { useLayoutEffect, useRef, useState } from 'react'
 import type { BubbleListRef } from '@ant-design/x/es/bubble'
 import type { ChatMessage } from '../../../types/chat'
+import { ChatRunSummary, type ChatRunStep } from './ChatRunSummary'
 
 type Props = {
   className?: string
@@ -12,6 +13,16 @@ type Props = {
   pendingAssistant: boolean
   scrollable?: boolean
   statusText?: string | null
+}
+
+function getRunSteps(message: ChatMessage, statusText: string | null | undefined): ChatRunStep[] {
+  if (message.role !== 'assistant' || message.generationStatus !== 'generating') return []
+
+  return [{
+    id: 'answer-generation',
+    status: 'loading',
+    title: statusText || '正在生成回答',
+  }]
 }
 
 export function ChatMessageList({
@@ -35,16 +46,18 @@ export function ChatMessageList({
   }
 
   const items = [
-    ...messages.map(message => ({
-      content: message.role === 'assistant'
-        ? <XMarkdown content={message.content} streaming={{ hasNextChunk: message.generationStatus === 'generating', tail: true }} />
-        : message.content,
-      key: message.id,
-      loading: message.role === 'assistant' && message.generationStatus === 'generating' && !message.content,
-      role: message.role === 'user' ? 'user' : 'ai',
-      footer: message.role === 'assistant' && message.content
+    ...messages.map(item => ({
+      content: item.role === 'assistant'
+        ? <>
+            <ChatRunSummary steps={getRunSteps(item, statusText)} />
+            {item.content && <XMarkdown content={item.content} streaming={{ hasNextChunk: item.generationStatus === 'generating', tail: true }} />}
+          </>
+        : item.content,
+      key: item.id,
+      role: item.role === 'user' ? 'user' : 'ai',
+      footer: item.role === 'assistant' && item.content
         ? <Tooltip title="复制">
-            <Button aria-label="复制" icon={<CopyOutlined />} size="small" type="text" onClick={() => void copyMessage(message.content)} />
+            <Button aria-label="复制" icon={<CopyOutlined />} size="small" type="text" onClick={() => void copyMessage(item.content)} />
           </Tooltip>
         : undefined,
       footerPlacement: 'outer-start' as const,
@@ -68,7 +81,6 @@ export function ChatMessageList({
 
   return (
     <div className={`${className} ${scrollable ? 'relative flex min-h-0 flex-1 flex-col' : ''}`}>
-      {statusText && <p className="mb-2 text-sm text-slate-400">{statusText}</p>}
       <Bubble.List
         ref={listRef}
         autoScroll={false}

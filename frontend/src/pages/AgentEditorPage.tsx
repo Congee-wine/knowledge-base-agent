@@ -104,11 +104,20 @@ export function AgentEditorPage() {
       queryClient.setQueryData(agentKeys.detail(savedAgent.id), savedAgent)
       queryClient.setQueryData<AgentListResponse>(agentKeys.all, (current) =>
         current
-          ? { ...current, items: current.items.map((item) => (item.id === savedAgent.id ? savedAgent : item)) }
+          ? {
+              ...current,
+              items: current.items.map((item) =>
+                item.id === savedAgent.id ? savedAgent : item,
+              ),
+            }
           : current,
       )
-      queryClient.setQueryData<{ agent: ChatAgent }>(agentKeys.entry, (current) =>
-        current?.agent.id === savedAgent.id ? { ...current, agent: savedAgent } : current,
+      queryClient.setQueryData<{ agent: ChatAgent }>(
+        agentKeys.entry,
+        (current) =>
+          current?.agent.id === savedAgent.id
+            ? { ...current, agent: savedAgent }
+            : current,
       )
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: agentKeys.all }),
@@ -138,7 +147,11 @@ export function AgentEditorPage() {
           返回
         </Button>
         <div className="agent-workbench__title">
-          <AgentAvatar agent={agent} className="agent-workbench__title-avatar" imageClassName="agent-workbench__title-avatar-image" />
+          <AgentAvatar
+            agent={agent}
+            className="agent-workbench__title-avatar"
+            imageClassName="agent-workbench__title-avatar-image"
+          />
           <strong>{agent.name}</strong>
         </div>
         <Button
@@ -147,7 +160,7 @@ export function AgentEditorPage() {
           type="primary"
           onClick={() => form.submit()}
         >
-          保存并刷新预览
+          保存后更新
         </Button>
       </header>
       <Form
