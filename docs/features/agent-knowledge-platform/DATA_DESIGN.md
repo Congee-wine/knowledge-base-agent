@@ -1,5 +1,18 @@
 # 数据设计
 
+## 2026-07-27：流式消息关联与幂等性补充
+
+当前 `messages` 表已通过迁移 `20260725_0006` 和 `20260727_0007` 增加以下字段：
+
+| 字段 | 类型 | 含义 |
+| --- | --- | --- |
+| `client_request_id` | TEXT，可空，非空值唯一 | 正式流式请求的幂等标识；只写入 assistant 消息。 |
+| `reply_to_message_id` | UUID，可空 | assistant 消息所回复的 user 消息 ID。新写入消息必须与 assistant 所在会话一致；历史数据保持 `NULL`，不猜测回填。 |
+
+约束意图：`reply_to_message_id` 仅允许出现在 `role='assistant'` 的消息上；`(reply_to_message_id, conversation_id)` 必须引用同一会话中的 `(id, conversation_id)`。这个关系用于防止幂等重试时从整个会话中误取“最新一条 user 消息”。
+
+> 状态说明：并发幂等请求通过保存点回滚后重读已创建记录实现幂等处理；为防止错误转换，消息终态更新仅允许作用于 `generating` 的 assistant 消息。
+
 ## 交互类型与头像对象
 
 - 迁移 `20260724_0005` 为 `agents` 增加非空 `interaction_type`，约束为 `text`、`voice`、`digital_human`；现有及首期新建记录默认 `text`。

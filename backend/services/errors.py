@@ -10,6 +10,10 @@ def not_found() -> DomainError:
     return DomainError(404, "RESOURCE_NOT_FOUND", "资源不存在或无权访问")
 
 
+def stream_request_unrecoverable() -> DomainError:
+    return DomainError(409, "STREAM_REQUEST_UNRECOVERABLE", "该流式请求缺少必需消息关联，请重新发送")
+
+
 def immutable_agent() -> DomainError:
     return DomainError(409, "AGENT_IMMUTABLE", "内置 AI 管家不能修改或删除")
 

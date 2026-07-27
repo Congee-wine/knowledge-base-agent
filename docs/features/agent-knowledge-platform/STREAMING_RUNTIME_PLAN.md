@@ -9,6 +9,14 @@
 - 流式事件的共同字段固定为 `requestId` 和 `sequence`。后续阶段将为 `message_start`、`status`、`answer_delta`、`message_end`、`error` 建立严格类型。
 - 本阶段不修改聊天业务流程、数据库或 Redis 续流能力。
 
+## 2026-07-27 阶段 1：消息仓储一致性（已完成）
+
+- Echo 消息在一个事务中写入 user/assistant 消息对并返回完整三元组。
+- assistant 消息通过 `reply_to_message_id` 关联其所回复的 user 消息，不再按会话最新消息猜测。
+- 并发的同一 `clientRequestId` 在唯一约束冲突后回滚至保存点并重读已创建的消息对；不会重复写入或向上层泄露唯一约束异常。
+- 已创建的草稿会话在首次流式发送时被激活并更新标题。
+- 消息终态只可从 `generating` 更新到 `complete`、`interrupted` 或 `failed`。
+
 ## 文档状态
 
 实现中；用户已确认阶段 A，并已完成首次前后端 SSE 接线。停止生成、Redis 缓冲、断线续流和浏览器端真实模型验证仍未完成。

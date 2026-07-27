@@ -71,9 +71,14 @@ def stream_message(user_id: str, agent_id: str, conversation_id: str | None, con
     conversation, user_message, assistant_message, created = result
     yield {"type": "message_start", "conversationId": str(conversation["id"]), "userMessageId": str(user_message["id"]), "assistantMessageId": str(assistant_message["id"])}
     if not created:
-        if assistant_message["generation_status"] == "complete":
+        status = assistant_message["generation_status"]
+        if status == "complete":
             yield {"type": "answer_delta", "content": assistant_message["content"]}
             yield {"type": "message_end", "messageId": str(assistant_message["id"]), "generationStatus": "complete"}
+        elif status == "generating":
+            yield {"type": "error", "code": "REQUEST_IN_PROGRESS", "message": "该请求正在生成中，请稍后重试", "retryable": False}
+        else:
+            yield {"type": "error", "code": "GENERATION_FAILED", "message": "上次生成已失败，请重新发送消息", "retryable": True}
         return
     history: list[ModelMessage] = []
     answer = ""
@@ -82,10 +87,10 @@ def stream_message(user_id: str, agent_id: str, conversation_id: str | None, con
         for delta in stream_answer(agent.system_prompt, history, content):
             answer += delta
             yield {"type": "answer_delta", "content": delta}
-        conversation_repository.finish_stream_generation(str(assistant_message["id"]), answer, "complete")
+        conversation_repository.complete_stream_generation(str(assistant_message["id"]), answer)
         yield {"type": "message_end", "messageId": str(assistant_message["id"]), "generationStatus": "complete"}
     except DeepSeekError:
-        conversation_repository.finish_stream_generation(str(assistant_message["id"]), answer, "failed")
+        conversation_repository.fail_stream_generation(str(assistant_message["id"]), answer)
         yield {"type": "error", "code": "MODEL_UNAVAILABLE", "message": "模型服务暂时不可用", "retryable": True}
 
 

@@ -1,5 +1,86 @@
 # 开发日志
 
+## 2026-07-27：阶段 1 验收修正
+
+### 实现内容
+
+- 将流式消息写入放在 PostgreSQL 保存点中；同一 `client_request_id` 的并发写入命中唯一约束时，回滚仅本次尝试并重读已创建的 user/assistant 消息对。
+- 向已创建的草稿会话首次发送流式消息时，在同一事务中填充标题、设置 `is_draft=false` 并更新 `updated_at`。
+- 流式终态更新限定为 `role='assistant' AND generation_status='generating'`，防止覆盖 user 消息、已完成消息或已中断消息。
+- 旧流式记录缺少 `reply_to_message_id` 时，返回 `STREAM_REQUEST_UNRECOVERABLE` 而非构造不完整的消息对。
+
+### 测试与验收
+
+- 仓储层测试增加到 14 项，包含双连接同步起点的并发幂等测试、草稿激活、跨会话约束、状态更新保护和旧请求拒绝。
+- 后端相关测试共 32 项通过。
+- 未执行共享数据库的 `downgrade -1` 回滚验证，因为该操作会删除已存在的 `reply_to_message_id` 数据。
+
+## 2026-07-27：阶段 1 独立验证更正
+
+### 实际验证结果
+
+- PostgreSQL `127.0.0.1:5432` 可连接，Alembic 当前版本为 `20260727_0007 (head)`。
+- `py_compile` 通过；新增仓储层/服务层测试与现有集成测试共 27 项通过。
+- 数据库实测确认：assistant 消息无法引用另一会话的 user 消息。
+
+### 验收未通过项
+
+- `start_stream_generation()` 先查询、后插入，未使用行锁、`ON CONFLICT` 恢复或唯一冲突重试。两个独立连接的竞态实测确认：同一 `client_request_id` 的第二个写入触发数据库唯一约束异常，不符合幂等性验收标准。
+- 向已创建的 `is_draft=true` 会话首次发送流式消息时，代码未将其转为 `is_draft=false`、未更新标题和 `updated_at`。
+- `_update_stream_status()` 仅按 `id` 更新消息，没有限定 `role='assistant'`。虽然当前服务层传入的是 assistant ID，但仓储层仍未独立保证“只更新正在生成的 assistant 消息”。
+- 幂等查询对早期、`reply_to_message_id IS NULL` 的历史流式记录使用 `LEFT JOIN`，可能构造出空的 user 消息对象。需要明确把它们视为不可恢复的旧请求，而不是继续返回不完整的消息对。
+- 新增测试没有覆盖跨会话约束、并发幂等性、流式开始时激活草稿会话和 `updated_at` 更新。
+- 没有在共享环境中执行 `downgrade -1` 及再次 `upgrade head`：这会删除已存在的 `reply_to_message_id` 数据，不应将其写成已验证事实。
+
+### 结论
+
+不接受“阶段 1 已完成”的文档声明。上述项目修正并添加对应测试后，才可进入阶段 2。
+
+## 2026-07-27：流式聊天修复阶段 1：消息仓储层事务与幂等性
+
+### 任务目标
+
+修复消息持久化的三个根本问题：`_append_echo_messages()` 被截断返回 `None` 导致上层解包崩溃、`finish_stream_generation()` 存在死代码和职责混乱、流式消息缺少用户-助手回复关联且幂等查询可能关联到错误的 user 消息。
+
+### 实现内容
+
+- 修复 `_append_echo_messages()`：补全 assistant 消息插入、会话标题更新和 `return` 语句，返回完整三元组。
+- 删除 `finish_stream_generation()` 及其死代码，拆分为 `complete_stream_generation()`、`interrupt_stream_generation()`、`fail_stream_generation()` 三个职责清晰的方法，均通过 `RETURNING` 更新并抛出明确异常。
+- 修改 `start_stream_generation()`：在同一事务中为 assistant 消息写入 `reply_to_message_id`，指向对应的 user 消息。
+- 重写幂等查询 `_find_existing_stream_request()`：通过 `assistant.reply_to_message_id` 关联 user 消息，不再从整个 conversation 取最新 user 消息。
+- 服务层适配：替换 `finish_stream_generation` 调用为 `complete_stream_generation` / `fail_stream_generation`；对 `generating` 状态的重复请求返回 `REQUEST_IN_PROGRESS` 错误，对 `failed` / `interrupted` 状态返回可重试错误。
+
+### 主要文件
+
+- `backend/repositories/conversations.py`：仓储层修复与重写。
+- `backend/services/conversations.py`：服务层适配新仓储方法。
+- `backend/migrations/versions/20260727_0007_message_reply_relation.py`：新增 `reply_to_message_id` 字段、索引、检查约束、唯一约束和外键。
+- `backend/tests/test_conversations_repository.py`：9 项仓储层测试。
+- `backend/tests/test_conversations_service.py`：4 项服务层测试。
+
+### 技术方案
+
+在 `messages` 表新增 `reply_to_message_id UUID NULL`，由 `assistant` 消息指向其回复的 `user` 消息。通过 `(id, conversation_id)` 唯一约束和复合外键保证 assistant 不能引用其他会话的消息。检查约束确保只有 `assistant` 角色可设置该字段。历史数据不回填，保持 `NULL`。
+
+### 接口或数据变化
+
+- 新增数据库迁移 `20260727_0007`，已在本地 PostgreSQL 执行 `alembic upgrade head`。
+- 新增 `messages.reply_to_message_id` 字段、`ix_messages_reply_to_message_id` 索引、`uq_messages_id_conversation_id` 唯一约束、`ck_messages_reply_to_role` 检查约束、`fk_messages_reply_to_message_id` 和 `fk_messages_reply_conversation` 外键。
+- 无新增 HTTP 接口。
+
+### 验证情况
+
+- 通过：`py_compile` 编译 `repositories/conversations.py`、`services/conversations.py`、迁移文件。
+- 通过：Alembic `upgrade head` 和 `downgrade -1` / 再次 `upgrade head`。
+- 通过：9 项仓储层测试（echo 三元组、流式开始写入 reply_to_message_id、complete/interrupt/fail 状态更新、幂等单次创建、幂等返回相同消息、不存在消息抛异常、检查约束拒绝 user 消息设置 reply_to_message_id）。
+- 通过：4 项服务层测试（echo 不崩溃、已完成重复请求不调用模型、生成中返回 REQUEST_IN_PROGRESS、失败返回可重试错误）。
+- 通过：9 项已有集成测试（智能体/会话）和 5 项已有认证集成测试，无回归。
+
+### 遗留问题
+
+- 前端 SSE 解析、停止生成、Redis 断线续流不在阶段 1 范围。
+- `GENERATION_FAILED` 状态的重复请求当前返回可重试错误，后续阶段可改为自动重新生成。
+
 ## 2026-07-27：流式聊天修复阶段 0：测试基础与协议边界
 
 ### 任务目标
