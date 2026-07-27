@@ -1,5 +1,36 @@
 # 开发日志
 
+## 2026-07-27：流式聊天修复阶段 0：测试基础与协议边界
+
+### 任务目标
+
+为后续 SSE 解析、事件去重、取消与聊天联调修复建立前端测试入口，同时纠正早期计划中与当前范围冲突的 Redis 续流描述。
+
+### 实现内容
+
+- 新增 Vitest、jsdom、React Testing Library 与 jest-dom 开发依赖。
+- 新增 `pnpm test` 和 `pnpm test:watch` 脚本。
+- 配置 jsdom 测试环境、DOM 断言和基础烟雾测试。
+
+### 主要文件
+
+- `frontend/vite.config.ts`：Vitest 测试环境。
+- `frontend/src/test/setup.ts`：jest-dom 断言加载。
+- `frontend/src/test/environment.test.tsx`：jsdom 和 Testing Library 烟雾测试。
+
+### 接口或数据变化
+
+无。
+
+### 验证情况
+
+- `pnpm test`：通过，1 个测试文件、1 个测试。
+- `pnpm build`：通过。普通受限环境下无法读取现有 `highlight.js` 依赖，以提升权限重跑后构建成功。
+
+### 遗留问题
+
+阶段 1 将修复消息仓储层事务不完整与幂等性缺陷。
+
 ## 2026-07-25：确认智能体推理摘要展示策略
 
 ### 任务目标
