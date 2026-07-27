@@ -1,5 +1,38 @@
 # 开发日志
 
+## 2026-07-27：阶段 1 消息显示顺序修复
+
+### 任务目标
+
+消除用户消息与对应助手消息使用相同时间戳时，因 UUID 次序随机而出现助手消息显示在用户消息之前的问题。
+
+### 实现内容
+
+- 新增 `messages.message_order`，作为会话内唯一、连续的显示序号。
+- Echo 和流式写入均在同一事务中锁定会话并为用户/助手消息连续分配序号。
+- 历史消息查询改为按 `message_order` 排序；历史数据由迁移按旧的 `created_at, id` 顺序回填。
+
+### 主要文件
+
+- `backend/migrations/versions/20260727_0008_message_order.py`：新增字段、历史回填和会话内唯一约束。
+- `backend/repositories/conversations.py`：分配序号并改用稳定排序。
+- `backend/tests/test_conversations_repository.py`：覆盖相同会话内时间戳反转时的显示顺序。
+
+### 接口或数据变化
+
+- 数据库新增非空 `message_order`，并增加 `(conversation_id, message_order)` 唯一约束。
+- 未新增或修改 HTTP 接口。
+
+### 验证情况
+
+- `py_compile` 通过。
+- Alembic `upgrade head` 已应用至 `20260727_0008`。
+- 仓储、服务、智能体/会话集成和认证集成测试分模块共 33 项通过。
+
+### 遗留问题
+
+- 以单个 120 秒超时运行全部后端测试会超时；四个模块分开运行均通过，后续应优化测试数据库连接和执行时长。
+
 ## 2026-07-27：阶段 1 验收修正
 
 ### 实现内容

@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from threading import Barrier, Lock
 from unittest.mock import patch
 
@@ -44,6 +44,7 @@ class ConversationsRepositoryTests(unittest.TestCase):
         self.assertEqual(assistant_msg["content"], "已收到你的消息：你好")
         self.assertEqual(assistant_msg["generation_status"], "complete")
         self.assertEqual(str(assistant_msg["reply_to_message_id"]), str(user_msg["id"]))
+        self.assertEqual((user_msg["message_order"], assistant_msg["message_order"]), (1, 2))
 
     def test_start_stream_generation_creates_messages_with_reply_relation(self) -> None:
         request_id = uuid.uuid4().hex
@@ -59,6 +60,7 @@ class ConversationsRepositoryTests(unittest.TestCase):
         self.assertEqual(assistant_msg["generation_status"], "generating")
         self.assertEqual(assistant_msg["client_request_id"], request_id)
         self.assertEqual(str(assistant_msg["reply_to_message_id"]), str(user_msg["id"]))
+        self.assertEqual((user_msg["message_order"], assistant_msg["message_order"]), (1, 2))
 
     def test_complete_stream_generation_updates_content_and_status(self) -> None:
         request_id = uuid.uuid4().hex
@@ -193,16 +195,16 @@ class ConversationsRepositoryTests(unittest.TestCase):
         with get_connection() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    """INSERT INTO messages (id, conversation_id, role, content, generation_status, created_at)
-                    VALUES (%s, %s, 'user', 'question', 'complete', %s) RETURNING *""",
+                    """INSERT INTO messages (id, conversation_id, role, content, generation_status, message_order, created_at)
+                    VALUES (%s, %s, 'user', 'question', 'complete', 1, %s) RETURNING *""",
                     (uuid.uuid4(), str(first["id"]), datetime.now(timezone.utc)),
                 )
                 user_message = cursor.fetchone()
                 cursor.execute("SAVEPOINT cross_conversation_reply")
                 with self.assertRaises(Exception):
                     cursor.execute(
-                        """INSERT INTO messages (id, conversation_id, role, content, generation_status, reply_to_message_id, created_at)
-                        VALUES (%s, %s, 'assistant', 'answer', 'complete', %s, %s)""",
+                        """INSERT INTO messages (id, conversation_id, role, content, generation_status, reply_to_message_id, message_order, created_at)
+                        VALUES (%s, %s, 'assistant', 'answer', 'complete', %s, 1, %s)""",
                         (uuid.uuid4(), str(second["id"]), user_message["id"], datetime.now(timezone.utc)),
                     )
                 cursor.execute("ROLLBACK TO SAVEPOINT cross_conversation_reply")
@@ -213,8 +215,8 @@ class ConversationsRepositoryTests(unittest.TestCase):
         with get_connection() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    """INSERT INTO messages (id, conversation_id, role, content, generation_status, client_request_id, created_at)
-                    VALUES (%s, %s, 'assistant', '', 'failed', %s, %s)""",
+                    """INSERT INTO messages (id, conversation_id, role, content, generation_status, client_request_id, message_order, created_at)
+                    VALUES (%s, %s, 'assistant', '', 'failed', %s, 1, %s)""",
                     (uuid.uuid4(), str(conversation["id"]), request_id, datetime.now(timezone.utc)),
                 )
 
@@ -229,18 +231,39 @@ class ConversationsRepositoryTests(unittest.TestCase):
         with get_connection() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    """INSERT INTO messages (id, conversation_id, role, content, generation_status, created_at)
-                    VALUES (%s, %s, 'user', 'x', 'complete', %s) RETURNING *""",
+                    """INSERT INTO messages (id, conversation_id, role, content, generation_status, message_order, created_at)
+                    VALUES (%s, %s, 'user', 'x', 'complete', 1, %s) RETURNING *""",
                     (uuid.uuid4(), str(conversation["id"]), datetime.now(timezone.utc)),
                 )
                 user_msg = cursor.fetchone()
                 with self.assertRaises(Exception):
                     cursor.execute(
-                        """INSERT INTO messages (id, conversation_id, role, content, generation_status, reply_to_message_id, created_at)
-                        VALUES (%s, %s, 'user', 'y', 'complete', %s, %s)""",
+                        """INSERT INTO messages (id, conversation_id, role, content, generation_status, reply_to_message_id, message_order, created_at)
+                        VALUES (%s, %s, 'user', 'y', 'complete', %s, 2, %s)""",
                         (uuid.uuid4(), str(conversation["id"]), user_msg["id"], datetime.now(timezone.utc)),
                     )
                 connection.rollback()
+
+    def test_list_messages_uses_message_order_when_timestamps_are_reversed(self) -> None:
+        conversation, _ = repo.create_conversation(self.user_id, self.agent_id, "顺序")
+        user_message_id = uuid.uuid4()
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                now = datetime.now(timezone.utc)
+                cursor.execute(
+                    """INSERT INTO messages (id, conversation_id, role, content, generation_status, message_order, created_at)
+                    VALUES (%s, %s, 'user', '问题', 'complete', 1, %s)""",
+                    (user_message_id, str(conversation["id"]), now + timedelta(seconds=1)),
+                )
+                cursor.execute(
+                    """INSERT INTO messages (id, conversation_id, role, content, generation_status, reply_to_message_id, message_order, created_at)
+                    VALUES (%s, %s, 'assistant', '回答', 'complete', %s, 2, %s)""",
+                    (uuid.uuid4(), str(conversation["id"]), user_message_id, now),
+                )
+
+        messages = repo.list_messages(str(conversation["id"]))
+        self.assertEqual([message["role"] for message in messages], ["user", "assistant"])
+        self.assertEqual([message["message_order"] for message in messages], [1, 2])
 
 
 if __name__ == "__main__":

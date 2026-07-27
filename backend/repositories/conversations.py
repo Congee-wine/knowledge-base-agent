@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Mapping
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any
 
 from psycopg.errors import UniqueViolation
@@ -63,7 +63,7 @@ def get_conversation(user_id: str, conversation_id: str) -> Mapping[str, Any] | 
 def list_messages(conversation_id: str) -> list[Mapping[str, Any]]:
     with get_connection() as connection:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT * FROM messages WHERE conversation_id = %s ORDER BY created_at, id", (conversation_id,))
+            cursor.execute("SELECT * FROM messages WHERE conversation_id = %s ORDER BY message_order", (conversation_id,))
             return cursor.fetchall()
 
 
@@ -111,19 +111,20 @@ def _append_echo_messages(
     cursor: Any, conversation: Mapping[str, Any], content: str
 ) -> tuple[Mapping[str, Any], Mapping[str, Any], Mapping[str, Any]]:
     user_message_at = datetime.now(timezone.utc)
-    assistant_message_at = user_message_at + timedelta(microseconds=1)
+    assistant_message_at = user_message_at
     user_message_id, assistant_message_id = uuid.uuid4(), uuid.uuid4()
     conversation_id = str(conversation["id"])
+    user_order, assistant_order = _reserve_message_orders(cursor, conversation_id)
     cursor.execute(
-        """INSERT INTO messages (id, conversation_id, role, content, generation_status, created_at)
-        VALUES (%s, %s, 'user', %s, 'complete', %s) RETURNING *""",
-        (user_message_id, conversation_id, content, user_message_at),
+        """INSERT INTO messages (id, conversation_id, role, content, generation_status, message_order, created_at)
+        VALUES (%s, %s, 'user', %s, 'complete', %s, %s) RETURNING *""",
+        (user_message_id, conversation_id, content, user_order, user_message_at),
     )
     user_message = cursor.fetchone()
     cursor.execute(
-        """INSERT INTO messages (id, conversation_id, role, content, generation_status, reply_to_message_id, created_at)
-        VALUES (%s, %s, 'assistant', %s, 'complete', %s, %s) RETURNING *""",
-        (assistant_message_id, conversation_id, f"已收到你的消息：{content}", user_message_id, assistant_message_at),
+        """INSERT INTO messages (id, conversation_id, role, content, generation_status, reply_to_message_id, message_order, created_at)
+        VALUES (%s, %s, 'assistant', %s, 'complete', %s, %s, %s) RETURNING *""",
+        (assistant_message_id, conversation_id, f"已收到你的消息：{content}", user_message_id, assistant_order, assistant_message_at),
     )
     assistant_message = cursor.fetchone()
     title = conversation["title"] or content[:50]
@@ -186,18 +187,31 @@ def _insert_stream_message_pair(
     cursor: Any, conversation_id: object, content: str, request_id: str, now: datetime
 ) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
     user_message_id, assistant_message_id = uuid.uuid4(), uuid.uuid4()
+    user_order, assistant_order = _reserve_message_orders(cursor, conversation_id)
     cursor.execute(
-        """INSERT INTO messages (id, conversation_id, role, content, generation_status, created_at)
-        VALUES (%s, %s, 'user', %s, 'complete', %s) RETURNING *""",
-        (user_message_id, str(conversation_id), content, now),
+        """INSERT INTO messages (id, conversation_id, role, content, generation_status, message_order, created_at)
+        VALUES (%s, %s, 'user', %s, 'complete', %s, %s) RETURNING *""",
+        (user_message_id, str(conversation_id), content, user_order, now),
     )
     user_message = cursor.fetchone()
     cursor.execute(
-        """INSERT INTO messages (id, conversation_id, role, content, generation_status, client_request_id, reply_to_message_id, created_at)
-        VALUES (%s, %s, 'assistant', '', 'generating', %s, %s, %s) RETURNING *""",
-        (assistant_message_id, str(conversation_id), request_id, user_message_id, now),
+        """INSERT INTO messages (id, conversation_id, role, content, generation_status, client_request_id, reply_to_message_id, message_order, created_at)
+        VALUES (%s, %s, 'assistant', '', 'generating', %s, %s, %s, %s) RETURNING *""",
+        (assistant_message_id, str(conversation_id), request_id, user_message_id, assistant_order, now),
     )
     return user_message, cursor.fetchone()
+
+
+def _reserve_message_orders(cursor: Any, conversation_id: object) -> tuple[int, int]:
+    cursor.execute("SELECT id FROM conversations WHERE id = %s FOR UPDATE", (str(conversation_id),))
+    if cursor.fetchone() is None:
+        raise _not_found_error()
+    cursor.execute(
+        "SELECT COALESCE(MAX(message_order), 0) + 1 AS first_order FROM messages WHERE conversation_id = %s",
+        (str(conversation_id),),
+    )
+    first_order = cursor.fetchone()["first_order"]
+    return first_order, first_order + 1
 
 
 def _activate_conversation(
@@ -256,11 +270,13 @@ def _find_existing_stream_request(
             assistant.id AS assistant_message_id,
             assistant.content AS assistant_content,
             assistant.generation_status AS assistant_generation_status,
+            assistant.message_order AS assistant_message_order,
             assistant.created_at AS assistant_created_at,
             user_message.id AS user_message_id,
             user_message.content AS user_content,
             user_message.role AS user_role,
             user_message.generation_status AS user_generation_status,
+            user_message.message_order AS user_message_order,
             user_message.created_at AS user_created_at
         FROM messages AS assistant
         JOIN conversations AS c ON c.id = assistant.conversation_id
@@ -291,6 +307,7 @@ def _find_existing_stream_request(
         "content": row["user_content"],
         "role": row["user_role"],
         "generation_status": row["user_generation_status"],
+        "message_order": row["user_message_order"],
         "created_at": row["user_created_at"],
     }
     assistant_message = {
@@ -301,6 +318,7 @@ def _find_existing_stream_request(
         "generation_status": row["assistant_generation_status"],
         "client_request_id": request_id,
         "reply_to_message_id": row["user_message_id"],
+        "message_order": row["assistant_message_order"],
         "created_at": row["assistant_created_at"],
     }
     return {"conversation": conversation, "user_message": user_message, "assistant_message": assistant_message}
