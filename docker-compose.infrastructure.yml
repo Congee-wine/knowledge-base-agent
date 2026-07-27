@@ -49,8 +49,10 @@ services:
         condition: service_started
     volumes:
       - ./backend:/app
+      - worker-model-cache:/models/bge
     restart: unless-stopped
 
 volumes:
   redis-data:
   minio-data:
+  worker-model-cache:

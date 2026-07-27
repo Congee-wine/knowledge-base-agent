@@ -32,3 +32,15 @@ def default_agent_must_be_cleared() -> DomainError:
 
 def object_storage_unavailable() -> DomainError:
     return DomainError(503, "OBJECT_STORAGE_UNAVAILABLE", "头像存储服务暂不可用，请检查 MinIO 配置后重试")
+
+
+def invalid_parent_node() -> DomainError:
+    return DomainError(409, "INVALID_PARENT_NODE", "父节点必须是当前用户拥有的文件夹")
+
+
+def knowledge_name_conflict(message: str) -> DomainError:
+    return DomainError(409, "KNOWLEDGE_NODE_NAME_CONFLICT", message)
+
+
+def processing_unavailable() -> DomainError:
+    return DomainError(501, "DOCUMENT_PROCESSING_UNAVAILABLE", "文档处理任务将在上传阶段开放")

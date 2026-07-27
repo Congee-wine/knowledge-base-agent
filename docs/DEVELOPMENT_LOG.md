@@ -2189,3 +2189,84 @@ Ant Design X 仅承担 AI 交互展示，避免与业务接口、鉴权和状态
 ## 遗留问题
 
 - 当前 Worker 只处理文档队列；聊天保持直接 SSE，不恢复 Redis/RQ 续流实现。
+
+## 2026-07-27：知识库阶段 3.0 Worker 最小闭环准备
+
+### 任务目标
+
+为后续文档处理建立受控依赖、配置和 Worker 连通探测，不开始资料树、上传、真实解析或 Embedding 业务。
+
+### 实现内容
+
+- 在 Worker 依赖清单中声明 PyMuPDF、`python-docx` 和 FlagEmbedding；未引入 OCR、云端 Embedding 或聊天续流依赖。
+- 新增本地模型缓存、文件大小、处理超时和 Embedding 批处理大小配置，并为 Docker Worker 增加持久化模型缓存卷。
+- 新增只读 `document-processing` 探测任务，验证 Worker 进程中的 PostgreSQL `SELECT 1` 与私有 MinIO Bucket 可访问；任务不创建业务数据、不上传对象且不加载模型。
+- 增加任务的正常结果与缺失 Bucket 失败路径单元测试。
+
+### 主要文件
+
+- `backend/requirements.txt`：文档解析和本地 BGE 运行依赖声明。
+- `backend/config.py`、`backend/.env.example`：非敏感运行配置及说明。
+- `backend/workers/tasks.py`：只读 Worker 依赖探测。
+- `backend/scripts/verify_infrastructure.py`：投递并校验新的文档 Worker 探测任务。
+- `docker-compose.infrastructure.yml`：Worker 本地模型缓存卷。
+- `backend/tests/test_document_worker_tasks.py`：Worker 探测任务单元测试。
+
+### 技术方案
+
+模型、解析和向量化仍保留在后续 Worker 阶段；本次先证明 Worker 能独立访问其必需基础设施，避免将容器网络、对象存储和模型问题混入同一故障链路。
+
+### 接口或数据变化
+
+无。未创建数据库迁移，也未新增 HTTP 接口。
+
+### 验证情况
+
+- 通过：`backend/.venv/Scripts/python.exe -m unittest tests.test_document_worker_tasks`，2 项测试通过。
+- 通过：相关 Python 文件 `py_compile` 与 `git diff --check`。
+- 未执行：Docker Worker 重新构建、真实队列消费和 PostgreSQL/MinIO 探测；当前终端未找到 Docker CLI。
+
+### 遗留问题
+
+- 需在具备 Docker CLI 的环境中重建 Worker 后运行 `backend/scripts/verify_infrastructure.py`，再决定阶段 3.0 是否完成。
+
+## 2026-07-27：知识库阶段 3.1 资料树与数据模型
+
+### 任务目标
+
+建立私有资料树、文件处理持久化模型和资料范围的数据边界；不接入真实文件上传、异步处理或检索。
+
+### 实现内容
+
+- 新增 Alembic `20260727_0009`，定义 `knowledge_nodes`、`document_versions`、`ingestion_jobs`、`document_chunks` 和 `agent_knowledge_scopes`，包含状态、版本、分块序号和资料范围唯一约束。
+- 新增资料树 Repository、Service、Schema 与 Router，提供当前用户资料树读取和文件夹创建。
+- 文件作为父节点、越权父节点和同级重名均由 Service 拒绝；内置 AI 管家资料范围不持久化为共享关联记录。
+- 新增失败文件重新处理的路由边界，当前明确返回“文档处理尚未开放”，不伪装为已投递任务。
+
+### 主要文件
+
+- `backend/migrations/versions/20260727_0009_knowledge_foundation.py`：知识库阶段 3.1 表、约束与索引。
+- `backend/repositories/knowledge.py`：资料树与范围查询。
+- `backend/services/knowledge.py`：资料树业务规则。
+- `backend/schemas/knowledge.py`、`backend/routers/knowledge.py`：资料树 HTTP 契约。
+- `backend/tests/test_knowledge_service.py`：资料树组合和非法父节点/同名规则测试。
+
+### 技术方案
+
+资料树以邻接表表示，后续范围递归由查询展开，因此新建到已选文件夹的子节点可自动进入范围。根节点与子节点分别使用部分唯一索引，避免 PostgreSQL `NULL` 唯一性语义放过根目录同名。
+
+### 接口或数据变化
+
+- 新增 `GET /api/knowledge/nodes`、`POST /api/knowledge/nodes`。
+- 增加 `POST /api/knowledge/files/{fileId}/reprocess` 的未开放边界；当前返回 `DOCUMENT_PROCESSING_UNAVAILABLE`。
+- 数据库迁移尚未实际应用。
+
+### 验证情况
+
+- 通过：`tests.test_knowledge_service` 与既有 Worker 任务测试共 5 项通过。
+- 通过：Python 编译、Alembic `upgrade head --sql` 离线 SQL 生成、`git diff --check`。
+- 未执行：真实数据库迁移、资料树 API 集成、跨用户数据库权限测试和 Docker Worker 验收；按本轮指示未将其作为当前完成条件。
+
+### 遗留问题
+
+- 阶段 3.2 负责接入上传、对象存储、任务创建和真实失败重试；阶段 3.3 才会写入分块与向量。

@@ -44,13 +44,19 @@ def verify_object_storage(bucket_name: str) -> None:
 
 def verify_worker_job() -> None:
     queue = get_document_processing_queue()
-    job = queue.enqueue("workers.tasks.run_infrastructure_probe")
+    job = queue.enqueue("workers.tasks.run_document_processing_probe")
     deadline = time.monotonic() + JOB_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
         job.refresh()
         if job.is_finished:
             result = job.return_value()
-            if result and result.get("message") == "Worker 已运行" and result.get("execution_platform") == "Linux":
+            if (
+                result
+                and result.get("message") == "Document worker dependencies are reachable"
+                and result.get("execution_platform") == "Linux"
+                and result.get("database") == "ok"
+                and result.get("object_storage_bucket")
+            ):
                 return
             raise RuntimeError("Worker did not execute the verification job in the expected Linux container.")
         if job.is_failed:

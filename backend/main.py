@@ -5,7 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import agents, auth, chat, conversations
+from routers import agents, auth, chat, conversations, knowledge
 from database import close_connection_pool, initialize_connection_pool
 from services.errors import DomainError
 
@@ -46,3 +46,4 @@ app.include_router(auth.router)
 app.include_router(chat.router)
 app.include_router(agents.router)
 app.include_router(conversations.router)
+app.include_router(knowledge.router)

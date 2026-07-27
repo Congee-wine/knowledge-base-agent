@@ -37,8 +37,11 @@
 - `migrations/`：Alembic 版本化数据库迁移；当前包含认证基线和 pgvector 扩展启用。
 - `integrations/object_storage.py`：MinIO/S3 兼容私有对象存储客户端适配。
 - `workers/queue.py`：Redis/RQ 文档处理队列适配。
-- `workers/tasks.py`：无副作用的基础设施测试任务；不承担文档解析业务。
+- `workers/tasks.py`：无副作用的文档 Worker 探测任务；只读验证 PostgreSQL 与私有 MinIO Bucket 连通性，不承担文档解析、上传或模型加载业务。
 - `workers/runner.py`：文档处理标准 RQ Worker 进程入口，仅在 Linux Worker 容器中运行。
+- `repositories/knowledge.py`：资料树、文件版本和智能体资料范围的数据访问；所有查询强制以用户归属过滤。
+- `services/knowledge.py`：资料树组合、文件夹创建及父节点/同名规则；上传与任务投递尚未接入。
+- `routers/knowledge.py`、`schemas/knowledge.py`：资料树读取和创建文件夹 HTTP 契约。
 - `Dockerfile.worker`：Worker 的 Python Linux 运行镜像定义；构建时不复制本机 `.env`。
 - `scripts/verify_infrastructure.py`：验证 Redis、私有 Bucket、对象写读删除和 RQ 测试任务的本地脚本。
 - `docker-compose.infrastructure.yml`：本地 Redis、MinIO 及持久化数据卷的启动配置。
@@ -60,7 +63,7 @@ Web API 使用 `psycopg_pool.ConnectionPool` 复用 PostgreSQL 连接，默认�
 - `revoked_tokens`：已撤销访问令牌的标识和过期时间。
 - `vector` 扩展：由认证基线迁移请求启用。
 
-已验证：认证表已初始化并由 Alembic `20260720_0001` 管理；本地 MinIO 私有 Bucket 可创建并完成测试对象写读删除。尚未实现：文档元数据、分片、嵌入向量表、向量索引、检索和重排。
+已验证：认证表已初始化并由 Alembic `20260720_0001` 管理；本地 MinIO 私有 Bucket 可创建并完成测试对象写读删除。迁移 `20260727_0009` 已定义文档元数据、处理任务、分块和资料范围表，但尚未应用到真实数据库；向量索引、上传、解析、Embedding、检索和重排尚未实现。
 
 ## 认证流程
 
@@ -115,7 +118,7 @@ Web API 使用 `psycopg_pool.ConnectionPool` 复用 PostgreSQL 连接，默认�
 ## 外部依赖与验证
 
 - 前端主要依赖：React、React Router、React Query、Zustand、Ant Design 6、Ant Design X、Ant Design X Markdown、Vite、TypeScript 和 Tailwind CSS。
-- 后端主要依赖：FastAPI、PyJWT、pwdlib（Argon2）、psycopg、pgvector、python-dotenv、Alembic、SQLAlchemy（仅迁移执行）、MinIO SDK、Redis 和 RQ。
+- 后端主要依赖：FastAPI、PyJWT、pwdlib（Argon2）、psycopg、pgvector、python-dotenv、Alembic、SQLAlchemy（仅迁移执行）、MinIO SDK、Redis、RQ、PyMuPDF、python-docx 和 FlagEmbedding。后 3 项目前仅在文档 Worker 镜像中声明，尚未加载模型或执行解析。
 - CI：GitHub Actions 对后端运行 Python 编译检查，对前端运行 `pnpm install --frozen-lockfile` 与 `pnpm build`。
 
 本次本地核查已通过后端 Python 编译、Alembic 认证基线对齐、真实 PostgreSQL 认证集成、Redis、MinIO 私有 Bucket 写读删除和 Docker Linux 标准 RQ Worker 测试任务执行；浏览器端到端行为仍待验证。
