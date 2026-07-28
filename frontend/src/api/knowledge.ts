@@ -1,5 +1,5 @@
 import { getStoredAccessToken } from '../lib/auth'
-import { request, requestForm } from './http'
+import { getApiBaseUrl, ApiError, request, requestForm } from './http'
 
 export type KnowledgeNode = {
   id: string
@@ -15,6 +15,11 @@ export type KnowledgeNode = {
 }
 
 type KnowledgeTreeResponse = { items: KnowledgeNode[] }
+
+export type DocumentPreview =
+  | { kind: 'pdf'; name: string; blob: Blob }
+  | { kind: 'text'; name: string; content: string; isMarkdown: boolean }
+  | { kind: 'html'; name: string; html: string }
 
 function authorizationHeader() {
   const accessToken = getStoredAccessToken()
@@ -47,4 +52,25 @@ export function uploadKnowledgeFile(parentId: string | null, file: File) {
   if (parentId) formData.set('parentId', parentId)
   formData.set('file', file)
   return requestForm<KnowledgeNode>('/api/knowledge/files', formData, { headers: authorizationHeader(), method: 'POST' })
+}
+
+export async function getDocumentPreview(nodeId: string): Promise<DocumentPreview> {
+  const response = await fetch(`${getApiBaseUrl()}/api/knowledge/files/${encodeURIComponent(nodeId)}/preview`, { headers: authorizationHeader() })
+  if (!response.ok) {
+    const data: unknown = await response.json().catch(() => undefined)
+    throw new ApiError(response.status, data, '文件预览失败，请稍后重试')
+  }
+  if (response.headers.get('content-type')?.includes('application/pdf')) {
+    return { kind: 'pdf', name: decodePreviewName(response.headers.get('x-document-name')), blob: await response.blob() }
+  }
+  return await response.json() as Exclude<DocumentPreview, { kind: 'pdf' }>
+}
+
+function decodePreviewName(encodedName: string | null) {
+  if (!encodedName) return 'document.pdf'
+  try {
+    return decodeURIComponent(encodedName)
+  } catch {
+    return 'document.pdf'
+  }
 }

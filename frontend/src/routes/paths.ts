@@ -10,5 +10,6 @@ export const routes = {
     agentNew: '/app/agents/new',
     agentEdit: (agentId: string) => `/app/agents/${agentId}/edit`,
     knowledgeBases: '/app/knowledge-bases',
+    knowledgeFilePreview: (fileId: string) => `/app/knowledge-bases/files/${fileId}/preview`,
   },
 } as const

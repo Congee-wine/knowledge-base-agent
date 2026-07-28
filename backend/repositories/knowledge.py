@@ -31,6 +31,19 @@ def find_owned_node(node_id: str, user_id: str) -> Mapping[str, Any] | None:
             return cursor.fetchone()
 
 
+def find_owned_current_file_version(node_id: str, user_id: str) -> Mapping[str, Any] | None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """SELECT node.id AS node_id, node.name, version.storage_key, version.mime_type, version.processing_status
+                FROM knowledge_nodes node
+                JOIN document_versions version ON version.knowledge_node_id = node.id AND version.is_current
+                WHERE node.id = %s AND node.owner_user_id = %s AND node.node_type = 'file'""",
+                (node_id, user_id),
+            )
+            return cursor.fetchone()
+
+
 def sibling_name_exists(user_id: str, parent_id: str | None, name: str, exclude_node_id: str | None = None) -> bool:
     with get_connection() as connection:
         with connection.cursor() as cursor:

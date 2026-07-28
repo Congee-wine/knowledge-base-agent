@@ -1,5 +1,73 @@
 # 开发日志
 
+## 2026-07-28：受认证文件预览
+
+### 任务目标
+
+为资料树中的 TXT、Markdown、PDF 与 DOCX 文件提供安全的浏览器内预览。
+
+### 实现内容
+
+- 增加按文件归属和处理状态校验的预览接口；私有对象存储地址不会返回给浏览器。
+- TXT/Markdown 以 UTF-8 文本返回，PDF 以经认证请求获取的 Blob 在浏览器内展示。
+- DOCX 复用 `python-docx` 读取段落、列表和表格；所有文档文字经 HTML 转义后放入固定安全标签，并在沙箱 iframe 内展示。
+- 资料树支持双击 ready 文件及右键“预览”进入同一预览页；未就绪或失败文件给出提示。
+
+### 主要文件
+
+- `backend/services/document_preview.py`：预览内容读取、状态判断和 DOCX 安全 HTML 转换。
+- `backend/routers/knowledge.py`、`backend/repositories/knowledge.py`：受认证预览接口与按所有者查询。
+- `frontend/src/pages/DocumentPreviewPage.tsx`：预览页及加载、错误和内容状态。
+- `frontend/src/pages/KnowledgeBasePage.tsx`、`frontend/src/features/knowledge/components/KnowledgeItemGrid.tsx`：资料树入口。
+
+### 技术方案
+
+PDF 不使用预签名 URL，而是以 Bearer 认证请求获取 Blob URL，避免私有对象地址泄露。DOCX 不引入转换依赖；现有 `python-docx` 的结构化读取满足本期段落、列表和表格展示，并通过服务端转义与浏览器沙箱降低 HTML 执行风险。
+
+### 接口或数据变化
+
+- 新增 `GET /api/knowledge/files/{nodeId}/preview`。
+- 无数据库迁移或数据结构变化。
+
+### 验证情况
+
+- 后端：`tests.test_document_preview`、`tests.test_document_worker_tasks`、`tests.test_document_validation` 共 14 项通过。
+- 前端：TypeScript `tsc --noEmit` 通过；资料树双击测试通过。
+- `pnpm build` 未通过：Vite 无法读取既有 `highlight.js` 依赖，报系统拒绝访问；TypeScript 阶段已完成，待修复本机依赖访问权限后重跑生产构建。
+- 浏览器端四种格式验收尚未执行。
+
+### 遗留问题
+
+- 需要进行真实浏览器验收，重点检查 PDF、DOCX、跨账号访问与失败状态。
+- 验收通过后再进入文本切分、`bge-m3` 向量化和检索。
+
+## 2026-07-28：四种文档格式解析验收完成
+
+### 任务目标
+
+确认 PDF、TXT、Markdown、DOCX 的真实异步处理链路可用。
+
+### 实现内容
+
+- 用户完成四种允许格式的 Worker 解析验收。
+- 阶段 3.2B 的上传、解析、处理状态和失败清理流程达到当前验收条件。
+
+### 主要文件
+
+无代码修改。
+
+### 接口或数据变化
+
+无。
+
+### 验证情况
+
+- 用户已验证：PDF、TXT、Markdown、DOCX 可完成真实解析。
+
+### 遗留问题
+
+- 下一阶段为受认证的文件预览；向量化与检索仍未实现。
+
 ## 2026-07-28：Worker 解析镜像依赖拆分
 
 ### 任务目标

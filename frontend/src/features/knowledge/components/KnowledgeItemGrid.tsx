@@ -8,6 +8,7 @@ type Props = {
   onSelectionChange: (itemId: string, selected: boolean) => void
   onContextMenu: (item: KnowledgeItem, position: { x: number; y: number }) => void
   onOpenFolder: (item: KnowledgeItem) => void
+  onOpenFile: (item: KnowledgeItem) => void
 }
 
 const itemIcons = {
@@ -24,7 +25,7 @@ const processingStatusLabels = {
   failed: '',
 }
 
-export function KnowledgeItemGrid({ items, selectedIds, onSelectionChange, onContextMenu, onOpenFolder }: Props) {
+export function KnowledgeItemGrid({ items, selectedIds, onSelectionChange, onContextMenu, onOpenFolder, onOpenFile }: Props) {
   return <div className="knowledge-item-grid">
     {items.map(item => {
       const selected = selectedIds.includes(item.id)
@@ -38,6 +39,7 @@ export function KnowledgeItemGrid({ items, selectedIds, onSelectionChange, onCon
         }}
         onDoubleClick={() => {
           if (item.kind === 'folder') onOpenFolder(item)
+          else onOpenFile(item)
         }}
       >
         <Checkbox
@@ -48,7 +50,7 @@ export function KnowledgeItemGrid({ items, selectedIds, onSelectionChange, onCon
         />
         {itemIcons[item.kind]}
         <p className="knowledge-item__name" title={item.name}>{item.name}</p>
-        {isProcessing && <span className={`knowledge-item__status is-${item.processingStatus}`}>
+        {isProcessing && item.processingStatus && <span className={`knowledge-item__status is-${item.processingStatus}`}>
           {processingStatusLabels[item.processingStatus]}
         </span>}
         {item.size && <span className="knowledge-item__size">{item.size}</span>}

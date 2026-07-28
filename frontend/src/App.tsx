@@ -31,6 +31,9 @@ const ChatPage = lazy(async () =>
 const KnowledgeBasePage = lazy(async () =>
   import('./pages/KnowledgeBasePage').then(module => ({ default: module.KnowledgeBasePage })),
 )
+const DocumentPreviewPage = lazy(async () =>
+  import('./pages/DocumentPreviewPage').then(module => ({ default: module.DocumentPreviewPage })),
+)
 
 function RouteLoadingFallback() {
   return (
@@ -106,6 +109,7 @@ function App() {
             <Route path={routes.app.agentNew} element={<Navigate to={routes.app.agents} replace />} />
             <Route path="/app/agents/:agentId/edit" element={<AgentEditorPage />} />
             <Route path={routes.app.knowledgeBases} element={<KnowledgeBasePage />} />
+            <Route path="/app/knowledge-bases/files/:fileId/preview" element={<DocumentPreviewPage />} />
           </Route>
         </Route>
         <Route path="*" element={<NotFoundPage />} />

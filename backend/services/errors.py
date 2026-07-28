@@ -62,6 +62,18 @@ def unsupported_document_type() -> DomainError:
     return DomainError(415, "UNSUPPORTED_DOCUMENT_TYPE", "当前仅支持 PDF、TXT、Markdown、DOCX 文档")
 
 
+def document_not_ready() -> DomainError:
+    return DomainError(409, "DOCUMENT_NOT_READY", "文件仍在处理中，暂时无法预览")
+
+
+def document_preview_empty() -> DomainError:
+    return DomainError(422, "DOCUMENT_PREVIEW_EMPTY", "文件没有可预览的内容")
+
+
+def document_preview_unavailable() -> DomainError:
+    return DomainError(503, "DOCUMENT_PREVIEW_UNAVAILABLE", "文件预览暂时不可用，请稍后重试")
+
+
 def file_too_large() -> DomainError:
     return DomainError(413, "FILE_TOO_LARGE", "文件大小超过允许限制")
 

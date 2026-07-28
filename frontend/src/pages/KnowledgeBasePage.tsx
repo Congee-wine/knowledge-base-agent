@@ -2,12 +2,14 @@ import { AppstoreFilled, CloseOutlined, DeleteOutlined, LeftOutlined, ReloadOutl
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Empty, Input, Modal, Radio, Result, Spin, message } from 'antd'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { createKnowledgeFolder, deleteKnowledgeNode, getKnowledgeTree, moveKnowledgeNode, renameKnowledgeNode, uploadKnowledgeFile, type KnowledgeNode } from '../api/knowledge'
 import { KnowledgeActionMenus } from '../features/knowledge/components/KnowledgeActionMenus'
 import { KnowledgeContextMenu } from '../features/knowledge/components/KnowledgeContextMenu'
 import { KnowledgeItemGrid } from '../features/knowledge/components/KnowledgeItemGrid'
 import { knowledgeKeys } from '../features/knowledge/knowledgeKeys'
 import type { KnowledgeActionId, KnowledgeItem } from '../features/knowledge/types'
+import { routes } from '../routes/paths'
 
 function flattenNodes(nodes: KnowledgeNode[]): KnowledgeItem[] {
   return nodes.flatMap(node => [{
@@ -24,6 +26,7 @@ function getFileKind(node: KnowledgeNode): KnowledgeItem['kind'] {
 }
 
 export function KnowledgeBasePage() {
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const treeQuery = useQuery({ queryKey: knowledgeKeys.tree, queryFn: getKnowledgeTree })
   const [activeMenu, setActiveMenu] = useState<'new' | 'upload' | null>(null)
@@ -120,7 +123,15 @@ export function KnowledgeBasePage() {
     if (action === 'rename') { setRenameItem(item); setRenameValue(item.name); return }
     if (action === 'move') return openMoveDialog([item.id])
     if (action === 'delete') return removeItems([item.id])
-    message.info('预览、编辑和下载将在资料上传阶段开放')
+    if (action === 'preview') return openFilePreview(item)
+    message.info('编辑和下载将在后续阶段开放')
+  }
+  const openFilePreview = (item: KnowledgeItem) => {
+    if (item.processingStatus !== 'ready') {
+      message.info(item.processingStatus === 'failed' ? '文件处理失败，无法预览' : '文件仍在处理中，请稍后再试')
+      return
+    }
+    navigate(routes.app.knowledgeFilePreview(item.id))
   }
   const handleUploadFile = (file: File | undefined) => {
     if (!file) return
@@ -165,7 +176,7 @@ export function KnowledgeBasePage() {
       <div className="knowledge-toolbar" onClick={event => event.stopPropagation()}><div className="knowledge-toolbar__path"><button aria-label="后退" className={historyIndex > 0 ? 'is-enabled' : ''} disabled={historyIndex === 0} type="button" onClick={goBack}><LeftOutlined /></button><button aria-label="前进" className={historyIndex < folderHistory.length - 1 ? 'is-enabled' : ''} disabled={historyIndex >= folderHistory.length - 1} type="button" onClick={goForward}><RightOutlined /></button><button aria-label="返回上一级" className={currentFolderId ? 'is-enabled' : ''} disabled={!currentFolderId} type="button" onClick={() => navigateToFolder(items.find(item => item.id === currentFolderId)?.parentId)}><UpOutlined /></button><nav className="knowledge-breadcrumb" aria-label="资料路径"><button type="button" onClick={() => navigateToFolder(undefined)}>根目录</button>{breadcrumbs.map(item => <span key={item.id}><i>/</i><button type="button" onClick={() => navigateToFolder(item.id)}>{item.name}</button></span>)}</nav><Input allowClear onChange={event => setSearchText(event.target.value)} placeholder="搜索名称" prefix={<SearchOutlined />} value={searchText} /></div>
         <KnowledgeActionMenus activeMenu={activeMenu} onMenuChange={setActiveMenu} onCreateFolder={() => { setActiveMenu(null); setCreateModalOpen(true) }} onUploadFile={() => { setActiveMenu(null); uploadInputRef.current?.click() }} onUploadFolder={() => { setActiveMenu(null); folderUploadInputRef.current?.click() }} /><div className="knowledge-view-actions"><button aria-label="网格视图" className={view === 'grid' ? 'is-active' : ''} type="button" onClick={() => setView('grid')}><AppstoreFilled /></button><button aria-label="列表视图" className={view === 'list' ? 'is-active' : ''} type="button" onClick={() => setView('list')}><UnorderedListOutlined /></button><button aria-label="刷新资料" type="button" onClick={() => void invalidateTree()}><ReloadOutlined /></button></div></div></header>
     <div className="knowledge-page__summary"><span>{folderCount} 个文件夹，{visibleItems.length - folderCount} 个文件</span>{selectedIds.length > 0 && <div className="knowledge-batch-actions"><strong>已选择 {selectedIds.length} 项</strong><button className="knowledge-batch-actions__move" type="button" onClick={() => openMoveDialog(selectedIds)}><SwapOutlined /> 移动</button><button className="knowledge-batch-actions__delete" type="button" onClick={() => removeItems(selectedIds)}><DeleteOutlined /> 删除</button><button type="button" onClick={() => setSelectedIds([])}><CloseOutlined /> 取消</button></div>}</div>
-    <main className={`knowledge-canvas ${view === 'list' ? 'is-list-view' : ''}`}>{visibleItems.length ? <KnowledgeItemGrid items={visibleItems} selectedIds={selectedIds} onOpenFolder={item => navigateToFolder(item.id)} onSelectionChange={(id, selected) => setSelectedIds(ids => selected ? [...ids, id] : ids.filter(value => value !== id))} onContextMenu={(item, position) => { setSelectedIds([item.id]); setContextItem({ item, position }) }} /> : <Empty description="暂无资料" image={Empty.PRESENTED_IMAGE_SIMPLE} />}</main>
+    <main className={`knowledge-canvas ${view === 'list' ? 'is-list-view' : ''}`}>{visibleItems.length ? <KnowledgeItemGrid items={visibleItems} selectedIds={selectedIds} onOpenFolder={item => navigateToFolder(item.id)} onOpenFile={openFilePreview} onSelectionChange={(id, selected) => setSelectedIds(ids => selected ? [...ids, id] : ids.filter(value => value !== id))} onContextMenu={(item, position) => { setSelectedIds([item.id]); setContextItem({ item, position }) }} /> : <Empty description="暂无资料" image={Empty.PRESENTED_IMAGE_SIMPLE} />}</main>
     <input ref={uploadInputRef} accept=".pdf,.txt,.md,.markdown,.docx" hidden type="file" onChange={event => { handleUploadFile(event.target.files?.[0]); event.target.value = '' }} />
     <input ref={input => { folderUploadInputRef.current = input; input?.setAttribute('webkitdirectory', '') }} accept=".pdf,.txt,.md,.markdown,.docx" hidden multiple type="file" onChange={event => { void handleFolderUpload(Array.from(event.target.files ?? [])); event.target.value = '' }} />
     <Modal cancelText="取消" okButtonProps={{ disabled: !folderName.trim() }} okText="创建" onCancel={() => setCreateModalOpen(false)} onOk={() => createMutation.mutate()} open={createModalOpen} title="新建文件夹"><Input autoFocus onChange={event => setFolderName(event.target.value)} value={folderName} /></Modal>

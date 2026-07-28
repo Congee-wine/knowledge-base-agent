@@ -1,5 +1,9 @@
 # 项目架构
 
+## 文件预览链路
+
+资料树只负责导航。`GET /api/knowledge/files/{nodeId}/preview` 通过当前用户、资料节点与当前文件版本联合校验后读取私有对象：TXT/Markdown 返回 UTF-8 文本，PDF 返回二进制流，DOCX 由 `services/document_preview.py` 转换为受控 HTML。浏览器端 PDF 使用临时 Blob URL，DOCX 运行在无权限的沙箱 iframe 中；对象存储路径和凭证不进入响应。
+
 ## 总体说明
 
 当前项目是前后端分离的 Web 应用。`frontend/` 提供 React 单页应用，`backend/` 提供 FastAPI API。已实现的核心业务是基于邮箱密码的认证和受保护的聊天接口骨架；知识库、向量检索和智能体回答尚未实现。

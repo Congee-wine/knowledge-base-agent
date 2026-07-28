@@ -34,3 +34,16 @@ class KnowledgeNodeResponse(BaseModel):
 
 class KnowledgeTreeResponse(BaseModel):
     items: list[KnowledgeNodeResponse]
+
+
+class TextDocumentPreviewResponse(BaseModel):
+    kind: Literal["text"]
+    name: str
+    content: str
+    is_markdown: bool = Field(serialization_alias="isMarkdown")
+
+
+class HtmlDocumentPreviewResponse(BaseModel):
+    kind: Literal["html"]
+    name: str
+    html: str
