@@ -4,7 +4,7 @@ from io import BytesIO
 from pathlib import PurePath
 from zipfile import BadZipFile, ZipFile
 
-from services.errors import unsupported_document_type
+from services.errors import empty_or_invalid_document, unsupported_document_type
 
 
 SUPPORTED_DOCUMENT_EXTENSIONS = frozenset({".pdf", ".txt", ".md", ".markdown", ".docx"})
@@ -12,12 +12,14 @@ SUPPORTED_DOCUMENT_EXTENSIONS = frozenset({".pdf", ".txt", ".md", ".markdown", "
 
 def validate_document_upload(filename: str, content_type: str | None, content: bytes) -> str:
     extension = PurePath(filename).suffix.lower()
-    if extension not in SUPPORTED_DOCUMENT_EXTENSIONS or not content:
+    if extension not in SUPPORTED_DOCUMENT_EXTENSIONS:
         raise unsupported_document_type()
+    if not content:
+        raise empty_or_invalid_document()
     if extension == ".pdf" and not content.startswith(b"%PDF-"):
-        raise unsupported_document_type()
+        raise empty_or_invalid_document()
     if extension == ".docx" and not _is_docx(content):
-        raise unsupported_document_type()
+        raise empty_or_invalid_document()
     if extension in {".txt", ".md", ".markdown"}:
         _validate_text_document(content)
     _validate_declared_content_type(extension, content_type)

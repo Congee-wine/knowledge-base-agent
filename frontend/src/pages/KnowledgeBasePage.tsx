@@ -1,7 +1,7 @@
 import { AppstoreFilled, CloseOutlined, DeleteOutlined, LeftOutlined, ReloadOutlined, RightOutlined, SearchOutlined, SwapOutlined, UnorderedListOutlined, UpOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Empty, Input, Modal, Radio, Result, Spin, message } from 'antd'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createKnowledgeFolder, deleteKnowledgeNode, getKnowledgeTree, moveKnowledgeNode, renameKnowledgeNode, uploadKnowledgeFile, type KnowledgeNode } from '../api/knowledge'
 import { KnowledgeActionMenus } from '../features/knowledge/components/KnowledgeActionMenus'
 import { KnowledgeContextMenu } from '../features/knowledge/components/KnowledgeContextMenu'
@@ -47,8 +47,15 @@ export function KnowledgeBasePage() {
   const renameMutation = useMutation({ mutationFn: () => renameKnowledgeNode(renameItem!.id, renameValue.trim()), onSuccess: () => { void invalidateTree(); setRenameItem(null); message.success('已重命名') }, onError: () => message.error('重命名失败，请检查名称是否重复') })
   const moveMutation = useMutation({ mutationFn: async () => Promise.all(moveItemIds.map(id => moveKnowledgeNode(id, targetFolderId))), onSuccess: () => { void invalidateTree(); setSelectedIds([]); setMoveItemIds([]); setMoveModalOpen(false); message.success('已移动') }, onError: () => message.error('移动失败；目标不能是自身或其子文件夹，且不能同名') })
   const deleteMutation = useMutation({ mutationFn: async (ids: string[]) => Promise.all(ids.map(deleteKnowledgeNode)), onSuccess: () => { void invalidateTree(); setSelectedIds([]); message.success('已删除') }, onError: () => message.error('删除失败，请重试') })
-  const uploadMutation = useMutation({ mutationFn: (file: File) => uploadKnowledgeFile(currentFolderId ?? null, file), onSuccess: () => { void invalidateTree(); message.success('文件已上传，等待后续处理') }, onError: () => message.error('上传失败：仅支持 PDF、TXT、Markdown、DOCX，且文件名不能重复') })
+  const uploadMutation = useMutation({ mutationFn: (file: File) => uploadKnowledgeFile(currentFolderId ?? null, file), onSuccess: () => { void invalidateTree(); message.success('文件已上传，等待后续处理') }, onError: error => message.error(error instanceof Error ? `上传失败：${error.message}` : '上传失败，请重试') })
   const items = useMemo(() => flattenNodes(treeQuery.data?.items ?? []), [treeQuery.data])
+  useEffect(() => {
+    if (!currentFolderId || items.some(item => item.id === currentFolderId)) return
+    setCurrentFolderId(undefined)
+    setFolderHistory([undefined])
+    setHistoryIndex(0)
+    setSelectedIds([])
+  }, [currentFolderId, items])
   const breadcrumbs = useMemo(() => {
     const trail: KnowledgeItem[] = []
     let node = currentFolderId ? items.find(item => item.id === currentFolderId) : undefined
@@ -124,9 +131,9 @@ export function KnowledgeBasePage() {
       }
       await invalidateTree()
       message.success(`已上传文件夹中的 ${files.length} 个文件，等待后续处理`)
-    } catch {
+    } catch (error) {
       void invalidateTree()
-      message.error('文件夹上传未完全完成，请刷新资料树后检查结果')
+      message.error(error instanceof Error ? `文件夹上传未完全完成：${error.message}` : '文件夹上传未完全完成，请刷新资料树后检查结果')
     }
   }
   if (treeQuery.isPending) return <div className="grid h-full place-items-center"><Spin tip="正在加载资料树" /></div>

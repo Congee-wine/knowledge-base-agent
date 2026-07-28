@@ -28,7 +28,10 @@ async function assertSuccess(response: Response): Promise<void> {
 }
 
 function getErrorMessage(data: unknown, fallbackMessage: string) {
-  if (typeof data === 'object' && data !== null && 'detail' in data && typeof data.detail === 'string') return data.detail
+  if (typeof data === 'object' && data !== null) {
+    if ('detail' in data && typeof data.detail === 'string') return data.detail
+    if ('message' in data && typeof data.message === 'string') return data.message
+  }
   return fallbackMessage
 }
 

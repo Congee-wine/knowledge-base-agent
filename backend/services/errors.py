@@ -58,6 +58,10 @@ def file_too_large() -> DomainError:
     return DomainError(413, "FILE_TOO_LARGE", "文件大小超过允许限制")
 
 
+def empty_or_invalid_document() -> DomainError:
+    return DomainError(422, "EMPTY_OR_INVALID_DOCUMENT", "文件为空，或 PDF/DOCX 文件内容无效")
+
+
 def invalid_knowledge_update() -> DomainError:
     return DomainError(422, "INVALID_KNOWLEDGE_UPDATE", "重命名或移动必须且只能指定一项")
 

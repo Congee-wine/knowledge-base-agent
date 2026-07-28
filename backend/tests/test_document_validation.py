@@ -23,7 +23,13 @@ class DocumentValidationTests(unittest.TestCase):
         self.assertEqual(validate_document_upload("a.docx", None, make_docx()), ".docx")
 
     def test_rejects_unsupported_extension_or_invalid_signature(self) -> None:
-        for filename, content in [("a.png", b"image"), ("a.pdf", b"not a pdf"), ("a.docx", b"not a zip")]:
+        for filename, content in [("a.png", b"image")]:
             with self.subTest(filename=filename), self.assertRaises(DomainError) as captured:
                 validate_document_upload(filename, None, content)
             self.assertEqual(captured.exception.code, "UNSUPPORTED_DOCUMENT_TYPE")
+
+    def test_rejects_empty_or_invalid_pdf_and_docx_with_specific_error(self) -> None:
+        for filename, content in [("empty.docx", b""), ("a.pdf", b"not a pdf"), ("a.docx", b"not a zip")]:
+            with self.subTest(filename=filename), self.assertRaises(DomainError) as captured:
+                validate_document_upload(filename, None, content)
+            self.assertEqual(captured.exception.code, "EMPTY_OR_INVALID_DOCUMENT")

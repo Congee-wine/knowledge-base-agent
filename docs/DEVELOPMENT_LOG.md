@@ -2716,3 +2716,61 @@ Ant Design X 仅承担 AI 交互展示，避免与业务接口、鉴权和状态
 ### 遗留问题
 
 - 需在浏览器刷新资料树后验证既有 PDF 与 DOCX 的图标；旧文件若没有版本 MIME，需要在后续处理阶段补齐或按扩展名回退。
+
+## 2026-07-28：删除目录后的上传上下文修复
+
+### 任务目标
+
+防止删除当前目录或其祖先后，页面仍以已删除目录作为上传父节点。
+
+### 实现内容
+
+- 资料树刷新后检测当前目录是否仍存在；不存在时自动返回根目录并重置目录历史与选中状态。
+- HTTP 客户端现读取统一错误响应的 `message` 字段；文件夹上传失败时展示服务端具体原因。
+
+### 主要文件
+
+- `frontend/src/pages/KnowledgeBasePage.tsx`：失效目录恢复与上传错误展示。
+- `frontend/src/api/http.ts`：统一错误消息解析。
+
+### 接口或数据变化
+
+无。
+
+### 验证情况
+
+- 通过：`pnpm exec tsc --noEmit`、`git diff --check`。
+
+### 遗留问题
+
+- 仍需浏览器复测“删除当前文件夹后重新上传同名文件夹”的完整流程。
+
+## 2026-07-28：上传无效文档提示修正
+
+### 任务目标
+
+区分“不支持的文件格式”与“扩展名允许但文件为空或内容无效”的上传失败原因。
+
+### 实现内容
+
+- 空文件、无效 PDF 文件头或无效 DOCX OpenXML 结构返回 `422 EMPTY_OR_INVALID_DOCUMENT`。
+- 不支持扩展名继续返回 `415 UNSUPPORTED_DOCUMENT_TYPE`。
+- 单文件上传界面展示后端具体错误信息。
+
+### 主要文件
+
+- `backend/services/document_validation.py`：校验错误分类。
+- `backend/services/errors.py`：无效文档错误定义。
+- `frontend/src/pages/KnowledgeBasePage.tsx`：上传失败提示。
+
+### 接口或数据变化
+
+新增错误契约 `EMPTY_OR_INVALID_DOCUMENT`。
+
+### 验证情况
+
+- 通过：文档校验单元测试 3 项、Python 编译、`git diff --check`。
+
+### 遗留问题
+
+- 仍需浏览器上传 0 KB DOCX，确认界面显示新的明确提示。
