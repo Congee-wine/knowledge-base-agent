@@ -6,6 +6,7 @@ type Props = {
   items: KnowledgeItem[]
   selectedIds: string[]
   onSelectionChange: (itemId: string, selected: boolean) => void
+  onContextMenu: (item: KnowledgeItem, position: { x: number; y: number }) => void
 }
 
 const itemIcons = {
@@ -15,11 +16,18 @@ const itemIcons = {
   word: <FileWordFilled className="knowledge-item__icon knowledge-item__icon--word" />,
 }
 
-export function KnowledgeItemGrid({ items, selectedIds, onSelectionChange }: Props) {
+export function KnowledgeItemGrid({ items, selectedIds, onSelectionChange, onContextMenu }: Props) {
   return <div className="knowledge-item-grid">
     {items.map(item => {
       const selected = selectedIds.includes(item.id)
-      return <article className={`knowledge-item ${selected ? 'is-selected' : ''}`} key={item.id}>
+      return <article
+        className={`knowledge-item ${selected ? 'is-selected' : ''}`}
+        key={item.id}
+        onContextMenu={event => {
+          event.preventDefault()
+          onContextMenu(item, { x: event.clientX, y: event.clientY })
+        }}
+      >
         <Checkbox
           aria-label={`选择${item.name}`}
           checked={selected}
