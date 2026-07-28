@@ -1,6 +1,7 @@
 import { ArrowLeftOutlined, FileTextOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
-import { Alert, Button, Result, Spin } from 'antd'
+import MDEditor from '@uiw/react-md-editor/nohighlight'
+import { Button, Result, Spin } from 'antd'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../api/http'
@@ -51,7 +52,9 @@ export function DocumentPreviewPage() {
     </header>
     <main className="document-preview__content">
       {preview.kind === 'pdf' && (pdfUrl ? <iframe className="document-preview__pdf" src={pdfUrl} title={preview.name} /> : <Spin tip="正在准备 PDF" />)}
-      {preview.kind === 'text' && <><Alert className="document-preview__format" message={preview.isMarkdown ? 'Markdown 文本预览' : 'TXT 文本预览'} type="info" showIcon /><pre className="document-preview__text">{preview.content}</pre></>}
+      {preview.kind === 'text' && (preview.isMarkdown
+        ? <MDEditor.Markdown className="document-preview__markdown" source={preview.content} wrapperElement={{ 'data-color-mode': 'light' }} />
+        : <pre className="document-preview__text">{preview.content}</pre>)}
       {preview.kind === 'html' && <iframe className="document-preview__docx" sandbox="" srcDoc={`<!doctype html><html><head><style>body{font-family:Arial,'Microsoft YaHei',sans-serif;color:#26364a;line-height:1.75;padding:28px;max-width:920px;margin:auto}table{border-collapse:collapse;width:100%;margin:16px 0}td{border:1px solid #d9e1eb;padding:8px;vertical-align:top}h1,h2,h3,h4,h5,h6{color:#1f3858}pre{white-space:pre-wrap}</style></head><body>${preview.html}</body></html>`} title={preview.name} />}
     </main>
   </section>
