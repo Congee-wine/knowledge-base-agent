@@ -45,6 +45,7 @@
 | API-007B | POST | `/conversations/messages` | 延迟创建会话并发送消息 | FR-003 |
 | API-008 | POST | `/conversations/messages:stream` | 延迟创建会话并接收 SSE | FR-003、FR-005 |
 | API-009 | GET/POST | `/knowledge/nodes` | 获取资料树/创建文件夹 | FR-004 |
+| API-009A | PATCH/DELETE | `/knowledge/nodes/{nodeId}` | 重命名、移动或递归删除资料节点 | FR-004 |
 | API-010 | POST | `/knowledge/files` | 上传文件 | FR-004 |
 | API-011 | POST | `/knowledge/files/{fileId}/reprocess` | 重新处理失败文件 | FR-004 |
 
@@ -147,6 +148,9 @@
 ## API-009/010/011：知识库
 
 - 创建文件夹：`{ "parentId": "uuid 或 null", "name": "销售资料" }`。
+- 更新节点：`{ "name": "新名称" }` 重命名；`{ "parentId": "目标文件夹 UUID 或 null" }` 移动。请求必须且只能包含其中一个字段。
+- 删除节点：`DELETE /knowledge/nodes/{nodeId}`。文件夹递归删除后代；服务端先清理资料范围、分块、版本与任务，再异步或重试删除私有对象。节点不存在或不属于当前用户统一返回 `RESOURCE_NOT_FOUND`；同名冲突、无效目标和循环移动返回明确的 `409` 业务错误。
+- 目录最大深度为 5 层（根目录下为第 1 层）。创建第 6 层，或移动后使任一后代超过第 5 层时，返回 `409 KNOWLEDGE_DEPTH_LIMIT_EXCEEDED`。
 - 资料树响应节点包含 `id`、`parentId`、`nodeType`、`name`、`status`、`children`；文件的 `status` 为 `processing`、`ready` 或 `failed`。
 - 上传使用 `multipart/form-data`，字段为 `parentId` 和 `file`；仅接受 PDF、TXT、`.docx` 和 Markdown 的 MIME/文件签名，超出服务端配置的大小返回 `FILE_TOO_LARGE`。
 - 重新处理仅允许 `failed` 文件；处理中或可用文件分别返回 `FILE_PROCESSING`、`FILE_ALREADY_READY`。

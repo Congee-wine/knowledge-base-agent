@@ -183,7 +183,13 @@ html, body, #root { min-height: 100%; margin: 0; }
 .knowledge-toolbar { display: flex; align-items: center; gap: 10px; margin-top: 24px; }
 .knowledge-toolbar__path { display: flex; min-width: 0; flex: 1; height: 33px; align-items: center; border: 1px solid #e3e8f0; border-radius: 7px; padding: 0 7px; }
 .knowledge-toolbar__path > button { display: grid; width: 23px; height: 25px; place-items: center; border: 0; background: transparent; color: #b7c0ce; cursor: not-allowed; font-size: 12px; }
-.knowledge-toolbar__path > strong { flex: 0 0 auto; margin: 0 13px 0 7px; color: #65748a; font-size: 12px; font-weight: 500; }
+.knowledge-toolbar__path > button.is-enabled { color: #53657d; cursor: pointer; }
+.knowledge-toolbar__path > button.is-enabled:hover { color: #376ee5; background: #f3f6fc; }
+.knowledge-breadcrumb { display: flex; min-width: 0; flex: 0 1 auto; align-items: center; margin: 0 10px 0 7px; overflow: hidden; white-space: nowrap; }
+.knowledge-breadcrumb span { display: inline-flex; min-width: 0; align-items: center; }
+.knowledge-breadcrumb i { margin: 0 8px; color: #b4bfce; font-style: normal; }
+.knowledge-breadcrumb button { overflow: hidden; border: 0; background: transparent; padding: 0; color: #65748a; cursor: pointer; font-size: 12px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.knowledge-breadcrumb button:hover { color: #376ee5; }
 .knowledge-toolbar__path .ant-input-affix-wrapper { height: 25px; min-width: 100px; flex: 1; border: 0; border-radius: 5px; background: #f4f5f7; box-shadow: none; }
 .knowledge-toolbar__path .ant-input { background: transparent; color: #5f6e82; font-size: 12px; }
 .knowledge-toolbar__path .ant-input::placeholder { color: #b8c1ce; }

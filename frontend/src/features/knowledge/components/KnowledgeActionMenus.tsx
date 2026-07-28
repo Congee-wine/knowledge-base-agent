@@ -13,6 +13,7 @@ type MenuKind = 'new' | 'upload' | null
 type Props = {
   activeMenu: MenuKind
   onMenuChange: (menu: MenuKind) => void
+  onCreateFolder: () => void
 }
 
 type ActionItem = { label: string; icon: ReactNode; tone?: string }
@@ -28,11 +29,13 @@ function ActionPanel({
   items,
   otherItems,
   compact = false,
+  onCreateFolder,
 }: {
   title: string
   items: ActionItem[]
   otherItems?: ActionItem[]
   compact?: boolean
+  onCreateFolder?: () => void
 }) {
   return <div className={`knowledge-action-panel ${compact ? 'knowledge-action-panel--compact' : ''}`} role="menu">
     <p className="knowledge-action-panel__section-title">{title}</p>
@@ -45,7 +48,7 @@ function ActionPanel({
     {otherItems && <>
       <p className="knowledge-action-panel__section-title knowledge-action-panel__section-title--other">其他</p>
       <div className="knowledge-action-panel__items knowledge-action-panel__items--other">
-        {otherItems.map(item => <button key={item.label} type="button" className="knowledge-action-panel__item" role="menuitem">
+        {otherItems.map(item => <button key={item.label} type="button" className="knowledge-action-panel__item" role="menuitem" onClick={item.label === '文件夹' ? onCreateFolder : undefined}>
           <span className={item.tone}>{item.icon}</span>
           {item.label}
         </button>)}
@@ -54,7 +57,7 @@ function ActionPanel({
   </div>
 }
 
-export function KnowledgeActionMenus({ activeMenu, onMenuChange }: Props) {
+export function KnowledgeActionMenus({ activeMenu, onMenuChange, onCreateFolder }: Props) {
   const uploadItems: ActionItem[] = [
     { label: '文件', icon: <UploadOutlined />, tone: 'is-upload' },
     { label: '文件夹', icon: <FolderOpenFilled />, tone: 'is-folder-upload' },
@@ -69,6 +72,7 @@ export function KnowledgeActionMenus({ activeMenu, onMenuChange }: Props) {
         title="Office 文档"
         items={createItems}
         otherItems={[{ label: '文件夹', icon: <FolderOpenFilled />, tone: 'is-folder-upload' }]}
+        onCreateFolder={onCreateFolder}
       />}
     </div>
     <div className="knowledge-actions__trigger">

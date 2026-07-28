@@ -11,6 +11,14 @@ class CreateKnowledgeFolderRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
 
 
+class UpdateKnowledgeNodeRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    parent_id: str | None = Field(default=None, alias="parentId")
+
+    def has_single_change(self) -> bool:
+        return len(self.model_fields_set) == 1 and self.model_fields_set <= {"name", "parent_id"}
+
+
 class KnowledgeNodeResponse(BaseModel):
     id: str
     parent_id: str | None = Field(serialization_alias="parentId")

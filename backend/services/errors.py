@@ -42,5 +42,17 @@ def knowledge_name_conflict(message: str) -> DomainError:
     return DomainError(409, "KNOWLEDGE_NODE_NAME_CONFLICT", message)
 
 
+def invalid_knowledge_move() -> DomainError:
+    return DomainError(409, "INVALID_KNOWLEDGE_MOVE", "不能将资料移动到自身或其子文件夹中")
+
+
+def knowledge_depth_limit_exceeded() -> DomainError:
+    return DomainError(409, "KNOWLEDGE_DEPTH_LIMIT_EXCEEDED", "文件夹最多支持 5 层嵌套")
+
+
+def invalid_knowledge_update() -> DomainError:
+    return DomainError(422, "INVALID_KNOWLEDGE_UPDATE", "重命名或移动必须且只能指定一项")
+
+
 def processing_unavailable() -> DomainError:
     return DomainError(501, "DOCUMENT_PROCESSING_UNAVAILABLE", "文档处理任务将在上传阶段开放")

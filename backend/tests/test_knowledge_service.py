@@ -48,6 +48,14 @@ class KnowledgeServiceTests(unittest.TestCase):
 
         self.assertEqual(captured.exception.code, "KNOWLEDGE_NODE_NAME_CONFLICT")
 
+    @patch("services.knowledge.knowledge_repository.get_node_depth", return_value=5)
+    @patch("services.knowledge.knowledge_repository.find_owned_node", return_value={"node_type": "folder"})
+    def test_create_folder_rejects_sixth_level(self, _: object, __: object) -> None:
+        with self.assertRaises(DomainError) as captured:
+            knowledge.create_folder("user-1", "folder-5", "过深目录")
+
+        self.assertEqual(captured.exception.code, "KNOWLEDGE_DEPTH_LIMIT_EXCEEDED")
+
 
 if __name__ == "__main__":
     unittest.main()

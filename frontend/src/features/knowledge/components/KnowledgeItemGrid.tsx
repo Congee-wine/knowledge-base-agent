@@ -7,6 +7,7 @@ type Props = {
   selectedIds: string[]
   onSelectionChange: (itemId: string, selected: boolean) => void
   onContextMenu: (item: KnowledgeItem, position: { x: number; y: number }) => void
+  onOpenFolder: (item: KnowledgeItem) => void
 }
 
 const itemIcons = {
@@ -16,7 +17,7 @@ const itemIcons = {
   word: <FileWordFilled className="knowledge-item__icon knowledge-item__icon--word" />,
 }
 
-export function KnowledgeItemGrid({ items, selectedIds, onSelectionChange, onContextMenu }: Props) {
+export function KnowledgeItemGrid({ items, selectedIds, onSelectionChange, onContextMenu, onOpenFolder }: Props) {
   return <div className="knowledge-item-grid">
     {items.map(item => {
       const selected = selectedIds.includes(item.id)
@@ -26,6 +27,9 @@ export function KnowledgeItemGrid({ items, selectedIds, onSelectionChange, onCon
         onContextMenu={event => {
           event.preventDefault()
           onContextMenu(item, { x: event.clientX, y: event.clientY })
+        }}
+        onDoubleClick={() => {
+          if (item.kind === 'folder') onOpenFolder(item)
         }}
       >
         <Checkbox
