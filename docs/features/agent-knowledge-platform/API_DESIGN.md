@@ -153,6 +153,7 @@
 - 目录最大深度为 5 层（根目录下为第 1 层）。创建第 6 层，或移动后使任一后代超过第 5 层时，返回 `409 KNOWLEDGE_DEPTH_LIMIT_EXCEEDED`。
 - 资料树响应节点包含 `id`、`parentId`、`nodeType`、`name`、`status`、`children`；文件的 `status` 为 `processing`、`ready` 或 `failed`。
 - 上传使用 `multipart/form-data`，字段为 `parentId` 和 `file`；仅接受 PDF、TXT、`.docx` 和 Markdown 的 MIME/文件签名，超出服务端配置的大小返回 `FILE_TOO_LARGE`。
+- 不支持的扩展名、MIME 或文件签名返回 `UNSUPPORTED_DOCUMENT_TYPE`；服务端在创建资料节点、写入对象存储和投递处理任务前完成校验。
 - 重新处理仅允许 `failed` 文件；处理中或可用文件分别返回 `FILE_PROCESSING`、`FILE_ALREADY_READY`。
 ## API-008A：正式会话 SSE 恢复订阅（已确认，未实现）
 

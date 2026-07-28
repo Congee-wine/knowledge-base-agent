@@ -50,6 +50,14 @@ def knowledge_depth_limit_exceeded() -> DomainError:
     return DomainError(409, "KNOWLEDGE_DEPTH_LIMIT_EXCEEDED", "文件夹最多支持 5 层嵌套")
 
 
+def unsupported_document_type() -> DomainError:
+    return DomainError(415, "UNSUPPORTED_DOCUMENT_TYPE", "当前仅支持 PDF、TXT、Markdown、DOCX 文档")
+
+
+def file_too_large() -> DomainError:
+    return DomainError(413, "FILE_TOO_LARGE", "文件大小超过允许限制")
+
+
 def invalid_knowledge_update() -> DomainError:
     return DomainError(422, "INVALID_KNOWLEDGE_UPDATE", "重命名或移动必须且只能指定一项")
 

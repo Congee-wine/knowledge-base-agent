@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, File, Form, Response, UploadFile, status
 
 from dependencies import get_current_user
 from schemas.auth import UserResponse
@@ -24,6 +24,15 @@ def create_knowledge_folder(
     current_user: Annotated[UserResponse, Depends(get_current_user)],
 ) -> KnowledgeNodeResponse:
     return knowledge_service.create_folder(current_user.id, data.parent_id, data.name)
+
+
+@router.post("/files", response_model=KnowledgeNodeResponse, status_code=status.HTTP_201_CREATED)
+async def upload_knowledge_file(
+    file: Annotated[UploadFile, File(...)],
+    current_user: Annotated[UserResponse, Depends(get_current_user)],
+    parent_id: Annotated[str | None, Form(alias="parentId")] = None,
+) -> KnowledgeNodeResponse:
+    return knowledge_service.upload_file(current_user.id, parent_id, file.filename or "", file.content_type, await file.read())
 
 
 @router.patch("/nodes/{node_id}", response_model=KnowledgeNodeResponse)

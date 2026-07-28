@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from collections.abc import Mapping, Sequence
 from typing import Any
 
 from repositories import knowledge as knowledge_repository
 from schemas.knowledge import KnowledgeNodeResponse
-from integrations.object_storage import remove_private_object
-from services.errors import invalid_knowledge_move, invalid_parent_node, knowledge_depth_limit_exceeded, knowledge_name_conflict, not_found, processing_unavailable
+from integrations.object_storage import put_private_object, remove_private_object
+from config import DOCUMENT_MAX_FILE_SIZE_BYTES
+from services.document_validation import validate_document_upload
+from services.errors import file_too_large, invalid_knowledge_move, invalid_parent_node, knowledge_depth_limit_exceeded, knowledge_name_conflict, not_found, processing_unavailable
 
 
 logger = logging.getLogger(__name__)
@@ -32,6 +35,30 @@ def create_folder(user_id: str, parent_id: str | None, name: str) -> KnowledgeNo
     if knowledge_repository.sibling_name_exists(user_id, parent_id, normalized_name):
         raise knowledge_name_conflict("同一文件夹中已存在同名资料")
     return _to_node(knowledge_repository.create_folder(user_id, parent_id, normalized_name))
+
+
+def upload_file(user_id: str, parent_id: str | None, filename: str, content_type: str | None, content: bytes) -> KnowledgeNodeResponse:
+    if len(content) > DOCUMENT_MAX_FILE_SIZE_BYTES:
+        raise file_too_large()
+    validate_document_upload(filename, content_type, content)
+    if parent_id is not None:
+        parent = knowledge_repository.find_owned_node(parent_id, user_id)
+        if parent is None:
+            raise not_found()
+        if parent["node_type"] != "folder":
+            raise invalid_parent_node()
+    if knowledge_repository.sibling_name_exists(user_id, parent_id, filename):
+        raise knowledge_name_conflict("同一文件夹中已存在同名资料")
+    storage_key = f"knowledge-files/{user_id}/{uuid.uuid4()}/{filename}"
+    try:
+        put_private_object(storage_key, content, content_type or "application/octet-stream")
+        return _to_node(knowledge_repository.create_uploaded_file(user_id, parent_id, filename, storage_key, content_type or "application/octet-stream", content))
+    except Exception:
+        try:
+            remove_private_object(storage_key)
+        except Exception:
+            logger.exception("upload rollback cleanup failed", extra={"storage_key": storage_key})
+        raise
 
 
 def rename_node(user_id: str, node_id: str, name: str) -> KnowledgeNodeResponse:

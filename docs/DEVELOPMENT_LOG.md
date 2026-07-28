@@ -2564,3 +2564,95 @@ Ant Design X 仅承担 AI 交互展示，避免与业务接口、鉴权和状态
 ### 遗留问题
 
 - 前端接近上限的提示可后续补充；服务端已作为最终限制。
+
+## 2026-07-28：知识库阶段 3.1 浏览器验收完成
+
+### 任务目标
+
+确认资料树管理在真实浏览器与当前 PostgreSQL 环境中达到阶段 3.1 验收条件。
+
+### 实现内容
+
+- 用户已完成资料树创建、双击进入、历史导航、面包屑跳转、重命名、移动、递归删除、五层限制和账号隔离的浏览器验收。
+- 项目当前目标转入阶段 3.2A：上传入口与四种允许格式的前后端限制。
+
+### 主要文件
+
+- `docs/PROJECT_STATUS.md`：将当前阶段更新为 3.2A。
+- `docs/features/agent-knowledge-platform/README.md`：修正阶段 3.1 实现与验收状态。
+
+### 接口或数据变化
+
+无。
+
+### 验证情况
+
+- 用户已验证：阶段 3.1 资料树全流程浏览器验收完成。
+
+### 遗留问题
+
+- 阶段 3.2A 尚未实现上传接口和前后端格式限制。
+
+## 2026-07-28：知识库阶段 3.2A 格式校验基础
+
+### 任务目标
+
+为仅允许 PDF、TXT、Markdown、DOCX 的上传规则建立服务端最终校验边界。
+
+### 实现内容
+
+- 新增支持格式校验：扩展名、声明 MIME、空文件与内容特征联合判断。
+- PDF 必须具有 `%PDF-` 文件头；DOCX 必须是含 Word 主文档的 OpenXML ZIP；TXT/Markdown 必须能以 UTF-8 解码。
+- 不支持格式统一返回 `415 UNSUPPORTED_DOCUMENT_TYPE`。
+
+### 主要文件
+
+- `backend/services/document_validation.py`：纯文档格式校验逻辑。
+- `backend/services/errors.py`：统一不支持格式错误。
+- `backend/tests/test_document_validation.py`：允许与拒绝场景测试。
+
+### 接口或数据变化
+
+新增错误契约 `UNSUPPORTED_DOCUMENT_TYPE`；上传 HTTP 接口将在 3.2A 后续步骤接入该校验。
+
+### 验证情况
+
+- 通过：文档校验与资料树服务单元测试共 6 项、Python 编译、`git diff --check`。
+
+### 遗留问题
+
+- 尚未实现上传接口、前端选择器限制、文件夹上传、对象存储写入与处理任务投递。
+
+## 2026-07-28：阶段 3.2A 单文件上传入口
+
+### 任务目标
+
+将四种允许格式的前后端校验接入真实单文件上传链路。
+
+### 实现内容
+
+- 新增受认证的 `POST /api/knowledge/files`，在对象存储写入前检查文件大小、名称、MIME 与内容特征。
+- 成功上传后写入私有对象存储，创建资料树文件节点及初始 `uploaded` 文件版本；数据库写入失败时尝试删除已写对象。
+- 上传菜单显示仅支持 PDF、TXT、Markdown、DOCX；浏览器文件选择器与客户端扩展名校验拒绝其他格式。
+
+### 主要文件
+
+- `backend/routers/knowledge.py`：文件上传接口。
+- `backend/services/knowledge.py`：上传业务编排与失败清理。
+- `backend/repositories/knowledge.py`：文件节点与初始版本持久化。
+- `frontend/src/api/knowledge.ts`：上传 API 客户端。
+- `frontend/src/features/knowledge/components/KnowledgeActionMenus.tsx`：支持格式提示及上传入口。
+- `frontend/src/pages/KnowledgeBasePage.tsx`：受限文件选择与上传状态。
+
+### 接口或数据变化
+
+- 新增 `POST /api/knowledge/files`，使用 `multipart/form-data` 的 `file` 与可选 `parentId`。
+
+### 验证情况
+
+- 通过：前端 `pnpm exec tsc --noEmit`、后端上传相关模块 Python 编译、`git diff --check`。
+- 未执行：真实 MinIO 写入与浏览器上传端到端验证；待当前环境实际上传四种允许格式和一个非法格式后确认。
+
+### 遗留问题
+
+- 文件夹上传、RQ 任务投递、解析、状态推进和预览尚未实现。

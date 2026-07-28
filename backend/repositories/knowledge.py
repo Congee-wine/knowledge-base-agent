@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from hashlib import sha256
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from typing import Any
@@ -51,6 +52,24 @@ def create_folder(user_id: str, parent_id: str | None, name: str) -> Mapping[str
                 (uuid.uuid4(), user_id, parent_id, name, now, now),
             )
             return cursor.fetchone()
+
+
+def create_uploaded_file(user_id: str, parent_id: str | None, name: str, storage_key: str, mime_type: str, content: bytes) -> Mapping[str, Any]:
+    now, node_id = datetime.now(timezone.utc), uuid.uuid4()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """INSERT INTO knowledge_nodes (id, owner_user_id, parent_id, node_type, name, created_at, updated_at)
+                VALUES (%s, %s, %s, 'file', %s, %s, %s) RETURNING *""",
+                (node_id, user_id, parent_id, name, now, now),
+            )
+            node = cursor.fetchone()
+            cursor.execute(
+                """INSERT INTO document_versions (id, knowledge_node_id, version_number, storage_key, mime_type, byte_size,
+                content_hash, processing_status, is_current, created_at) VALUES (%s, %s, 1, %s, %s, %s, %s, 'uploaded', true, %s)""",
+                (uuid.uuid4(), node_id, storage_key, mime_type, len(content), sha256(content).hexdigest(), now),
+            )
+            return node
 
 
 def update_node(node_id: str, user_id: str, *, name: str | None = None, parent_id: str | None = None) -> Mapping[str, Any] | None:

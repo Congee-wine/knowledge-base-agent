@@ -14,6 +14,7 @@ type Props = {
   activeMenu: MenuKind
   onMenuChange: (menu: MenuKind) => void
   onCreateFolder: () => void
+  onUploadFile: () => void
 }
 
 type ActionItem = { label: string; icon: ReactNode; tone?: string }
@@ -30,17 +31,19 @@ function ActionPanel({
   otherItems,
   compact = false,
   onCreateFolder,
+  onUploadFile,
 }: {
   title: string
   items: ActionItem[]
   otherItems?: ActionItem[]
   compact?: boolean
   onCreateFolder?: () => void
+  onUploadFile?: () => void
 }) {
   return <div className={`knowledge-action-panel ${compact ? 'knowledge-action-panel--compact' : ''}`} role="menu">
     <p className="knowledge-action-panel__section-title">{title}</p>
     <div className="knowledge-action-panel__items">
-      {items.map(item => <button key={item.label} type="button" className="knowledge-action-panel__item" role="menuitem">
+      {items.map(item => <button key={item.label} type="button" className="knowledge-action-panel__item" role="menuitem" onClick={item.label === '文件' ? onUploadFile : undefined}>
         <span className={item.tone}>{item.icon}</span>
         {item.label}
       </button>)}
@@ -57,7 +60,7 @@ function ActionPanel({
   </div>
 }
 
-export function KnowledgeActionMenus({ activeMenu, onMenuChange, onCreateFolder }: Props) {
+export function KnowledgeActionMenus({ activeMenu, onMenuChange, onCreateFolder, onUploadFile }: Props) {
   const uploadItems: ActionItem[] = [
     { label: '文件', icon: <UploadOutlined />, tone: 'is-upload' },
     { label: '文件夹', icon: <FolderOpenFilled />, tone: 'is-folder-upload' },
@@ -79,7 +82,7 @@ export function KnowledgeActionMenus({ activeMenu, onMenuChange, onCreateFolder 
       <button className="knowledge-toolbar-button" type="button" onClick={() => onMenuChange(activeMenu === 'upload' ? null : 'upload')}>
         <UploadOutlined /> 上传
       </button>
-      {activeMenu === 'upload' && <ActionPanel compact title="从本地上传" items={uploadItems} />}
+      {activeMenu === 'upload' && <ActionPanel compact title="仅支持 PDF、TXT、Markdown、DOCX" items={uploadItems} onUploadFile={onUploadFile} />}
     </div>
   </div>
 }

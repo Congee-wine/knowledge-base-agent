@@ -1,5 +1,5 @@
 import { getStoredAccessToken } from '../lib/auth'
-import { request } from './http'
+import { request, requestForm } from './http'
 
 export type KnowledgeNode = {
   id: string
@@ -38,4 +38,11 @@ export function moveKnowledgeNode(nodeId: string, parentId: string | null) {
 
 export function deleteKnowledgeNode(nodeId: string) {
   return request<void>(`/api/knowledge/nodes/${encodeURIComponent(nodeId)}`, { headers: authorizationHeader(), method: 'DELETE' })
+}
+
+export function uploadKnowledgeFile(parentId: string | null, file: File) {
+  const formData = new FormData()
+  if (parentId) formData.set('parentId', parentId)
+  formData.set('file', file)
+  return requestForm<KnowledgeNode>('/api/knowledge/files', formData, { headers: authorizationHeader(), method: 'POST' })
 }
