@@ -11,6 +11,7 @@ from schemas.agents import (
     ChatEntryResponse,
     CreateAgentRequest,
     DefaultAgentResponse,
+    AgentKnowledgeScopeRequest, AgentKnowledgeScopeResponse,
     UpdateAgentRequest,
 )
 from schemas.auth import UserResponse
@@ -78,6 +79,16 @@ def read_agent(agent_id: str, current_user: Annotated[UserResponse, Depends(get_
 @router.patch("/agents/{agent_id}", response_model=AgentResponse)
 def update_agent(agent_id: str, data: UpdateAgentRequest, current_user: Annotated[UserResponse, Depends(get_current_user)]) -> AgentResponse:
     return agent_service.update_agent(current_user.id, agent_id, data)
+
+
+@router.get("/agents/{agent_id}/knowledge-scope", response_model=AgentKnowledgeScopeResponse)
+def read_agent_knowledge_scope(agent_id: str, current_user: UserResponse = Depends(get_current_user)) -> AgentKnowledgeScopeResponse:
+    return AgentKnowledgeScopeResponse(node_ids=agent_service.get_knowledge_scope(current_user.id, agent_id))
+
+
+@router.put("/agents/{agent_id}/knowledge-scope", response_model=AgentKnowledgeScopeResponse)
+def replace_agent_knowledge_scope(agent_id: str, data: AgentKnowledgeScopeRequest, current_user: UserResponse = Depends(get_current_user)) -> AgentKnowledgeScopeResponse:
+    return AgentKnowledgeScopeResponse(node_ids=agent_service.replace_knowledge_scope(current_user.id, agent_id, data.node_ids))
 
 
 @router.post("/agents/{agent_id}/preview/messages:stream")

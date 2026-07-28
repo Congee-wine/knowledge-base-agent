@@ -4,11 +4,12 @@ import {
   PlusOutlined,
   SaveOutlined,
 } from '@ant-design/icons'
-import { Button, Form, Input, Radio, Result, Spin, message } from 'antd'
+import { Button, Checkbox, Form, Input, Modal, Radio, Result, Spin, message } from 'antd'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { updateAgent } from '../api/agents'
+import { getAgentKnowledgeScope, updateAgent, updateAgentKnowledgeScope } from '../api/agents'
+import { getKnowledgeTree, type KnowledgeNode } from '../api/knowledge'
 import { agentKeys } from '../features/agents/agentKeys'
 import { AgentAvatar } from '../features/agents/components/AgentAvatar'
 import { AgentEditorPreview } from '../features/agents/components/AgentEditorPreview'
@@ -61,6 +62,9 @@ export function AgentEditorPage() {
     null,
   )
   const [saving, setSaving] = useState(false)
+  const [scopeOpen, setScopeOpen] = useState(false)
+  const [scopeIds, setScopeIds] = useState<string[]>([])
+  const [scopeNodes, setScopeNodes] = useState<KnowledgeNode[]>([])
 
   useEffect(() => {
     if (!agentQuery.data || agentQuery.data.kind !== 'personal') return
@@ -68,6 +72,18 @@ export function AgentEditorPage() {
     form.setFieldsValue(values)
     setPreviewValues(values)
   }, [agentQuery.data, form])
+
+  useEffect(() => {
+    if (!agentId) return
+    void getAgentKnowledgeScope(agentId).then(scope => setScopeIds(scope.nodeIds)).catch(() => undefined)
+  }, [agentId])
+
+  const openScope = async () => {
+    try {
+      const [scope, tree] = await Promise.all([getAgentKnowledgeScope(agentId!), getKnowledgeTree()])
+      setScopeIds(scope.nodeIds); setScopeNodes(tree.items); setScopeOpen(true)
+    } catch (error) { message.error(error instanceof Error ? error.message : '资料树加载失败') }
+  }
 
   if (agentQuery.isPending)
     return (
@@ -98,6 +114,7 @@ export function AgentEditorPage() {
     setSaving(true)
     try {
       const savedAgent = await updateAgent(agent.id, toPayload(values, agent))
+      await updateAgentKnowledgeScope(agent.id, scopeIds)
       const savedValues = toFormValues(savedAgent)
       form.setFieldsValue(savedValues)
       setPreviewValues(savedValues)
@@ -246,7 +263,7 @@ export function AgentEditorPage() {
               icon={<PlusOutlined />}
               size="small"
               type="text"
-              onClick={() => message.info('知识集选择将在知识库功能完成后开放')}
+              onClick={() => void openScope()}
             >
               请选择知识集
             </Button>
@@ -321,6 +338,15 @@ export function AgentEditorPage() {
           />
         )}
       </Form>
+      <Modal title="选择绑定资料" open={scopeOpen} onCancel={() => setScopeOpen(false)} onOk={() => setScopeOpen(false)}>
+        {flattenNodes(scopeNodes).map(node => <Checkbox key={node.id} checked={scopeIds.includes(node.id)} onChange={event => setScopeIds(current => event.target.checked ? [...current, node.id] : current.filter(id => id !== node.id))}>
+          {'　'.repeat(node.depth)}{node.nodeType === 'folder' ? '文件夹：' : '文件：'}{node.name}
+        </Checkbox>)}
+      </Modal>
     </section>
   )
+}
+
+function flattenNodes(nodes: KnowledgeNode[], depth = 0): Array<KnowledgeNode & { depth: number }> {
+  return nodes.flatMap(node => [{ ...node, depth }, ...flattenNodes(node.children, depth + 1)])
 }

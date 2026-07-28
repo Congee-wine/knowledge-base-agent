@@ -3,6 +3,7 @@ import { ArrowDownOutlined, CopyOutlined } from '@ant-design/icons'
 import { Button, message, Tooltip } from 'antd'
 import { XMarkdown } from '@ant-design/x-markdown'
 import { useLayoutEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import type { BubbleListRef } from '@ant-design/x/es/bubble'
 import type { ChatMessage } from '../../../types/chat'
 import { ChatRunSummary, type ChatRunStep } from './ChatRunSummary'
@@ -16,13 +17,27 @@ type Props = {
 }
 
 function getRunSteps(message: ChatMessage, statusText: string | null | undefined): ChatRunStep[] {
-  if (message.role !== 'assistant' || message.generationStatus !== 'generating') return []
+  if (message.role !== 'assistant') return []
+  if (message.runSteps?.length) return message.runSteps.map(step => ({ ...step, status: message.generationStatus === 'generating' && step.status === 'loading' ? 'loading' : step.status }))
+  if (message.generationStatus !== 'generating') return []
 
   return [{
     id: 'answer-generation',
     status: 'loading',
     title: statusText || '正在生成回答',
   }]
+}
+
+function CitationList({ message }: { message: ChatMessage }) {
+  if (message.role !== 'assistant' || !message.citations?.length) return null
+  return <div className="mt-3 border-t border-slate-100 pt-2 text-xs text-slate-500">
+    {message.citations.map(citation => <div key={`${citation.documentNodeId}-${citation.location ?? ''}`} className="mb-2">
+      <Link className="font-medium text-blue-600" to={`/app/knowledge/files/${citation.documentNodeId}/preview`}>
+        {citation.documentName}{citation.location ? ` · ${citation.location}` : ''}
+      </Link>
+      <p className="m-0 mt-1 line-clamp-2">{citation.snippet}</p>
+    </div>)}
+  </div>
 }
 
 export function ChatMessageList({
@@ -51,6 +66,7 @@ export function ChatMessageList({
         ? <>
             <ChatRunSummary steps={getRunSteps(item, statusText)} />
             {item.content && <XMarkdown content={item.content} streaming={{ hasNextChunk: item.generationStatus === 'generating', tail: true }} />}
+            <CitationList message={item} />
           </>
         : item.content,
       key: item.id,

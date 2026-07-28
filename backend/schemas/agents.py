@@ -60,3 +60,11 @@ class ChatEntryResponse(BaseModel):
 
 class DefaultAgentResponse(BaseModel):
     default_agent_id: str = Field(serialization_alias="defaultAgentId")
+
+
+class AgentKnowledgeScopeRequest(BaseModel):
+    node_ids: list[str] = Field(default_factory=list, alias="nodeIds", max_length=100)
+
+
+class AgentKnowledgeScopeResponse(BaseModel):
+    node_ids: list[str] = Field(serialization_alias="nodeIds")

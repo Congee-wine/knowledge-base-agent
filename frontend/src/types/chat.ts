@@ -30,6 +30,15 @@ export type ChatMessage = {
   content: string
   generationStatus: 'generating' | 'complete' | 'interrupted' | 'failed'
   createdAt: string
+  citations?: ChatCitation[]
+  runSteps?: Array<{ id: string; status: 'loading' | 'success' | 'error'; title: string }>
+}
+
+export type ChatCitation = {
+  documentNodeId: string
+  documentName: string
+  location: string | null
+  snippet: string
 }
 
 export type ConversationDetail = Conversation & {

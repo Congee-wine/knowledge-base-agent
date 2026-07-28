@@ -10,7 +10,7 @@ type Props = {
   sending: boolean
   onChange: (value: string) => void
   onStop?: () => void
-  onSubmit: (content: string) => void
+  onSubmit: (content: string, useKnowledgeBase: boolean) => void
 }
 
 export function ChatComposerSurface({ agent, value, sending, onChange, onStop, onSubmit }: Props) {
@@ -22,7 +22,7 @@ export function ChatComposerSurface({ agent, value, sending, onChange, onStop, o
   const notifyUnsupported = () => message.info('功能暂未支持')
   const submitMessage = () => {
     if (!content.trim()) return
-    onSubmit(content)
+    onSubmit(content, isBuiltin && useKnowledgeBase)
   }
 
   return (

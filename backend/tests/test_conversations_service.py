@@ -40,8 +40,9 @@ class ConversationsServiceTests(unittest.TestCase):
         self.assertEqual(result.user_message.content, "你好")
         self.assertEqual(result.assistant_message.content, "已收到你的消息：你好")
 
+    @patch("services.conversations.retrieve_for_agent", return_value=[])
     @patch("services.conversations.stream_answer")
-    def test_completed_duplicate_request_does_not_call_model(self, mock_stream: object) -> None:
+    def test_completed_duplicate_request_does_not_call_model(self, mock_stream: object, _: object) -> None:
         request_id = uuid.uuid4().hex
         events = list(service.stream_message(
             str(self.user_id), self.agent_id, None, "第一次", request_id

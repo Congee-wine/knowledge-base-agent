@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from collections.abc import Mapping
 from datetime import datetime, timezone
@@ -257,8 +258,10 @@ def _activate_conversation(
     return cursor.fetchone()
 
 
-def complete_stream_generation(assistant_message_id: str, content: str) -> Mapping[str, Any]:
-    return _update_stream_status(assistant_message_id, content, "complete")
+def complete_stream_generation(
+    assistant_message_id: str, content: str, citations: list[dict[str, object]] | None = None,
+) -> Mapping[str, Any]:
+    return _update_stream_status(assistant_message_id, content, "complete", citations)
 
 
 def interrupt_stream_generation(assistant_message_id: str, content: str) -> Mapping[str, Any]:
@@ -296,14 +299,17 @@ def fail_stream_generation(assistant_message_id: str, content: str) -> Mapping[s
     return _update_stream_status(assistant_message_id, content, "failed")
 
 
-def _update_stream_status(assistant_message_id: str, content: str, status: str) -> Mapping[str, Any]:
+def _update_stream_status(
+    assistant_message_id: str, content: str, status: str, citations: list[dict[str, object]] | None = None,
+) -> Mapping[str, Any]:
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
-                """UPDATE messages SET content = %s, generation_status = %s
+                """UPDATE messages SET content = %s, generation_status = %s,
+                citations_json = COALESCE(%s::jsonb, citations_json)
                 WHERE id = %s AND role = 'assistant' AND generation_status = 'generating'
                 RETURNING *""",
-                (content, status, assistant_message_id),
+                (content, status, json.dumps(citations) if citations is not None else None, assistant_message_id),
             )
             message = cursor.fetchone()
             if message is None:

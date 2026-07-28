@@ -7,6 +7,7 @@ from config import REDIS_URL
 
 
 DOCUMENT_PROCESSING_QUEUE = "document-processing"
+EMBEDDING_QUEUE = "embedding"
 
 
 def create_redis_connection() -> Redis:
@@ -15,3 +16,7 @@ def create_redis_connection() -> Redis:
 
 def get_document_processing_queue() -> Queue:
     return Queue(DOCUMENT_PROCESSING_QUEUE, connection=create_redis_connection())
+
+
+def get_embedding_queue() -> Queue:
+    return Queue(EMBEDDING_QUEUE, connection=create_redis_connection())

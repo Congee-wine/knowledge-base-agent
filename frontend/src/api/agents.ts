@@ -43,6 +43,16 @@ export function updateAgent(agentId: string, values: AgentFormValues) {
   return request<ChatAgent>(`/api/agents/${encodeURIComponent(agentId)}`, { body: values, headers: authorizationHeader(), method: 'PATCH' })
 }
 
+export function getAgentKnowledgeScope(agentId: string) {
+  return request<{ nodeIds: string[] }>(`/api/agents/${encodeURIComponent(agentId)}/knowledge-scope`, { headers: authorizationHeader() })
+}
+
+export function updateAgentKnowledgeScope(agentId: string, nodeIds: string[]) {
+  return request<{ nodeIds: string[] }>(`/api/agents/${encodeURIComponent(agentId)}/knowledge-scope`, {
+    body: { nodeIds }, headers: authorizationHeader(), method: 'PUT',
+  })
+}
+
 export function deleteAgent(agentId: string) {
   return request<void>(`/api/agents/${encodeURIComponent(agentId)}`, { headers: authorizationHeader(), method: 'DELETE' })
 }

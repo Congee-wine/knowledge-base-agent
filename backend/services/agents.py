@@ -8,6 +8,7 @@ from typing import Any
 from minio.error import S3Error
 
 from repositories import agents as agent_repository
+from repositories import knowledge as knowledge_repository
 from integrations.object_storage import put_private_object, read_private_object, remove_private_object
 from schemas.agents import AgentResponse, CreateAgentRequest, UpdateAgentRequest
 from services.errors import default_agent_must_be_cleared, immutable_agent, not_found, object_storage_unavailable
@@ -83,6 +84,19 @@ def set_default_agent(user_id: str, agent_id: str) -> str:
 
 def clear_default_agent(user_id: str) -> None:
     agent_repository.clear_default_agent(user_id)
+
+
+def get_knowledge_scope(user_id: str, agent_id: str) -> list[str]:
+    agent = agent_repository.find_visible_agent(agent_id, user_id)
+    if agent is None: raise not_found()
+    return [] if agent["kind"] == "builtin" else knowledge_repository.list_agent_scope_node_ids(user_id, agent_id)
+
+
+def replace_knowledge_scope(user_id: str, agent_id: str, node_ids: list[str]) -> list[str]:
+    agent = agent_repository.find_owned_personal_agent(agent_id, user_id)
+    if agent is None: raise not_found()
+    knowledge_repository.replace_agent_scope_node_ids(user_id, agent_id, node_ids)
+    return knowledge_repository.list_agent_scope_node_ids(user_id, agent_id)
 
 
 def resolve_chat_entry(user_id: str) -> AgentResponse:

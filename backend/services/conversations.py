@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
+import logging
 from typing import Any
 
 from repositories import agents as agent_repository
@@ -10,7 +11,11 @@ from schemas.conversations import ConversationDetailResponse, ConversationRespon
 from services.agents import get_agent
 from services.errors import not_found
 from services.agent_runtime import ModelMessage, stream_answer
+from services.retrieval import build_retrieval_context, retrieve_for_agent
 from integrations.deepseek import DeepSeekError
+
+
+logger = logging.getLogger(__name__)
 
 
 def create_conversation(user_id: str, agent_id: str, title: str | None) -> tuple[ConversationResponse, bool]:
@@ -63,7 +68,7 @@ def send_echo_message(
     )
 
 
-def stream_message(user_id: str, agent_id: str, conversation_id: str | None, content: str, request_id: str) -> Iterator[dict[str, object]]:
+def stream_message(user_id: str, agent_id: str, conversation_id: str | None, content: str, request_id: str, use_knowledge_base: bool = False) -> Iterator[dict[str, object]]:
     agent = _ensure_active_agent(user_id, agent_id)
     result = conversation_repository.start_stream_generation(user_id, agent_id, conversation_id, content, request_id)
     if result is None:
@@ -84,12 +89,26 @@ def stream_message(user_id: str, agent_id: str, conversation_id: str | None, con
             return
         history = _load_valid_history(conversation, user_message)
         answer = ""
+        citations: list[dict[str, object]] = []
         try:
+            yield {"type": "status", "stage": "retrieving", "text": "正在检索资料"}
+            try:
+                sources = retrieve_for_agent(user_id, agent_id, content) if (getattr(agent, "kind", "personal") == "personal" or use_knowledge_base) else []
+            except Exception:
+                logger.exception("knowledge retrieval failed", extra={"agent_id": agent_id, "user_id": user_id})
+                sources = []
+                yield {"type": "status", "stage": "retrieval_failed", "text": "资料检索失败，已降级为普通回答"}
+            citations = [source.to_citation() for source in sources]
+            if citations:
+                yield {"type": "status", "stage": "context", "text": f"已命中 {len(citations)} 条资料，正在构造上下文"}
+                yield {"type": "sources", "items": citations}
+            elif getattr(agent, "kind", "personal") == "personal" or use_knowledge_base:
+                yield {"type": "status", "stage": "no_match", "text": "未命中已启用的知识库资料"}
             yield {"type": "status", "stage": "generating", "text": "正在生成回答"}
-            for delta in stream_answer(agent.system_prompt, history, content):
+            for delta in stream_answer(agent.system_prompt, history, content, build_retrieval_context(sources)):
                 answer += delta
                 yield {"type": "answer_delta", "content": delta}
-            conversation_repository.complete_stream_generation(str(assistant_message["id"]), answer)
+            conversation_repository.complete_stream_generation(str(assistant_message["id"]), answer, citations)
             yield {"type": "message_end", "messageId": str(assistant_message["id"]), "generationStatus": "complete"}
         except DeepSeekError:
             conversation_repository.fail_stream_generation(str(assistant_message["id"]), answer)
@@ -132,5 +151,5 @@ def _conversation_response(row: Mapping[str, Any]) -> ConversationResponse:
 def _message_response(row: Mapping[str, Any]) -> MessageResponse:
     return MessageResponse(
         id=str(row["id"]), role=row["role"], content=row["content"],
-        generation_status=row["generation_status"], created_at=row["created_at"],
+        generation_status=row["generation_status"], created_at=row["created_at"], citations=row.get("citations_json") or [],
     )

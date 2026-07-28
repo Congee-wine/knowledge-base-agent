@@ -76,7 +76,7 @@ def stream_message(
 ) -> StreamingResponse:
     if data.after_sequence > 0:
         raise stream_resume_unavailable()
-    events = conversation_service.stream_message(current_user.id, agent_id, conversation_id, data.content, data.request_id)
+    events = conversation_service.stream_message(current_user.id, agent_id, conversation_id, data.content, data.request_id, data.use_knowledge_base)
     return StreamingResponse(_sse(events, data.request_id, "conversation"), media_type="text/event-stream")
 
 

@@ -19,13 +19,16 @@ class RuntimeState(TypedDict):
     history: list[ModelMessage]
     messages: list[BaseMessage]
     system_prompt: str | None
+    retrieval_context: str | None
 
 
-def stream_answer(system_prompt: str | None, history: list[ModelMessage], content: str) -> Iterator[str]:
+def stream_answer(
+    system_prompt: str | None, history: list[ModelMessage], content: str, retrieval_context: str | None = None,
+) -> Iterator[str]:
     graph = _build_runtime_graph()
     try:
         for message, metadata in graph.stream(
-            {"content": content, "history": history, "messages": [], "system_prompt": system_prompt},
+            {"content": content, "history": history, "messages": [], "system_prompt": system_prompt, "retrieval_context": retrieval_context},
             stream_mode="messages",
         ):
             if metadata.get("langgraph_node") != "model":
@@ -52,6 +55,8 @@ def _prepare_input(state: RuntimeState) -> dict[str, list[BaseMessage]]:
     messages: list[BaseMessage] = []
     if state["system_prompt"] and state["system_prompt"].strip():
         messages.append(SystemMessage(content=state["system_prompt"].strip()))
+    if state["retrieval_context"]:
+        messages.append(SystemMessage(content=state["retrieval_context"]))
     messages.extend(_history_messages(state["history"][-10:]))
     messages.append(HumanMessage(content=state["content"]))
     return {"messages": messages}

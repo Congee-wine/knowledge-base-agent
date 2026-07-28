@@ -9,6 +9,10 @@ from platform import system
 from database import get_connection
 from integrations.object_storage import create_object_storage_client, get_object_storage_settings, read_private_object, remove_private_object
 from repositories import knowledge as knowledge_repository
+from retrieval.chunking import SourceText, split_mixed
+from integrations.embeddings import embed_texts
+from workers.queue import get_embedding_queue
+from config import DOCUMENT_EMBEDDING_BATCH_SIZE
 
 
 logger = logging.getLogger(__name__)
@@ -72,7 +76,9 @@ def process_document_ingestion(job_id: str) -> None:
         chunks = _extract_chunks(str(job["mime_type"]), content)
         if not chunks:
             raise ValueError("Document contains no extractable text")
-        knowledge_repository.complete_ingestion(job_id, chunks)
+        version_id = knowledge_repository.complete_ingestion(job_id, chunks)
+        if isinstance(version_id, str):
+            _enqueue_embedding(version_id)
     except Exception:
         knowledge_repository.fail_ingestion(job_id, "DOCUMENT_PROCESSING_FAILED", "文档解析失败，请确认文件内容后重试")
         _remove_failed_document(job)
@@ -102,3 +108,43 @@ def _extract_chunks(mime_type: str, content: bytes) -> list[tuple[str, int | Non
         return [(text, None)] if text else []
     text = content.decode("utf-8").strip()
     return [(text, None)] if text else []
+
+
+def _enqueue_embedding(document_version_id: str) -> None:
+    try:
+        embedding_job_id = knowledge_repository.create_embedding_job(document_version_id)
+        get_embedding_queue().enqueue("workers.tasks.process_document_embedding", embedding_job_id, job_timeout=900)
+    except Exception:
+        logger.exception("embedding enqueue failed", extra={"document_version_id": document_version_id})
+
+
+def process_document_embedding(job_id: str) -> None:
+    """Convert extracted document text into source-aware chunks and BGE-M3 vectors."""
+    job = knowledge_repository.get_embedding_job(job_id)
+    if job is None:
+        return
+    try:
+        knowledge_repository.mark_embedding_processing(job_id)
+        source_texts = [SourceText(row["content"], row["page_number"]) for row in knowledge_repository.list_version_chunks(str(job["version_id"]))]
+        chunks = split_mixed(source_texts)
+        if not chunks:
+            raise ValueError("Document contains no indexable chunks")
+        vectors = _embed_in_batches([chunk.content for chunk in chunks])
+        knowledge_repository.replace_version_chunks_with_embeddings(str(job["version_id"]), str(job["owner_user_id"]), chunks, vectors)
+        knowledge_repository.complete_embedding(job_id)
+    except Exception:
+        knowledge_repository.fail_embedding(job_id, "DOCUMENT_EMBEDDING_FAILED")
+        logger.exception("document embedding failed", extra={"job_id": job_id})
+        raise
+
+
+def _embed_in_batches(contents: list[str]) -> list[list[float]]:
+    vectors: list[list[float]] = []
+    for start in range(0, len(contents), DOCUMENT_EMBEDDING_BATCH_SIZE):
+        vectors.extend(embed_texts(contents[start:start + DOCUMENT_EMBEDDING_BATCH_SIZE]))
+    return vectors
+
+
+def embed_query_text(content: str) -> list[float]:
+    """Short synchronous-request task; model ownership remains in embedding Worker."""
+    return embed_texts([content])[0]

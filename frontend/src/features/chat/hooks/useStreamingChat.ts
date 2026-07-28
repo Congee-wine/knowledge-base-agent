@@ -8,6 +8,7 @@ type SendStreamInput = {
   conversationId: string | null
   onConversationCreated?: (conversationId: string) => void
   preview?: boolean
+  useKnowledgeBase?: boolean
 }
 
 type PendingPersistedPair = {
@@ -142,7 +143,7 @@ export function useStreamingChat() {
     })
   }, [])
 
-  const send = useCallback(async ({ agent, content, conversationId, onConversationCreated, preview = false }: SendStreamInput) => {
+  const send = useCallback(async ({ agent, content, conversationId, onConversationCreated, preview = false, useKnowledgeBase = false }: SendStreamInput) => {
     const key = conversationKey(conversationId, preview)
     if (activeStreams.current.has(key)) return
     const requestId = createRequestId()
@@ -150,8 +151,8 @@ export function useStreamingChat() {
     const active: ActiveStream = { assistantMessageId: null, controller: new AbortController(), key, mode, requestId, sequence: 0 }
     activeStreams.current.set(key, active)
     const createdAt = new Date().toISOString()
-    const userMessage: ChatMessage = { content, createdAt, generationStatus: 'complete', id: `local-user-${requestId}`, role: 'user' }
-    const assistantMessage: ChatMessage = { content: '', createdAt, generationStatus: 'generating', id: `local-assistant-${requestId}`, role: 'assistant' }
+    const userMessage: ChatMessage = { citations: [], content, createdAt, generationStatus: 'complete', id: `local-user-${requestId}`, role: 'user' }
+    const assistantMessage: ChatMessage = { citations: [], content: '', createdAt, generationStatus: 'generating', id: `local-assistant-${requestId}`, role: 'assistant' }
     updateStream(key, current => ({
       ...current,
       assistantMessageId: null,
@@ -165,7 +166,7 @@ export function useStreamingChat() {
       ? `/api/agents/${encodeURIComponent(agent.id)}/preview/messages:stream`
       : `/api/conversations/messages:stream?agentId=${encodeURIComponent(agent.id)}${conversationId ? `&conversationId=${encodeURIComponent(conversationId)}` : ''}`
     const history = (storeRef.current.streams[key] ?? initialStream).messages
-    const body = preview ? { content, draftAgent: agent, history: history.map(message => ({ content: message.content, role: message.role })), requestId } : { content, requestId }
+    const body = preview ? { content, draftAgent: agent, history: history.map(message => ({ content: message.content, role: message.role })), requestId } : { content, requestId, useKnowledgeBase }
 
     try {
       await streamChat({ body, path, signal: active.controller.signal, onEvent: event => {
@@ -225,7 +226,18 @@ export function useStreamingChat() {
 }
 
 function applyEvent(current: ConversationStream, event: ChatStreamEvent, active: ActiveStream): ConversationStream {
-  if (event.type === 'status') return { ...current, statusText: event.text }
+  if (event.type === 'status') return {
+    ...current, statusText: event.text,
+    messages: updateAssistant(current.messages, active.assistantMessageId, active.requestId, message => ({
+      ...message,
+      runSteps: [...(message.runSteps ?? []).map(step => ({ ...step, status: step.status === 'loading' ? 'success' as const : step.status })),
+        { id: `${event.stage}-${event.sequence}`, status: event.stage === 'retrieval_failed' ? 'error' : 'loading', title: event.text }],
+    })),
+  }
+  if (event.type === 'sources') return {
+    ...current,
+    messages: updateAssistant(current.messages, active.assistantMessageId, active.requestId, message => ({ ...message, citations: event.items })),
+  }
   if (event.type === 'answer_delta') return { ...current, messages: updateAssistant(current.messages, active.assistantMessageId, active.requestId, message => ({ ...message, content: message.content + event.content })) }
   if (event.type === 'message_end') {
     const messages = updateAssistant(current.messages, active.assistantMessageId, active.requestId, message => ({ ...message, id: event.mode === 'conversation' ? event.messageId : message.id, generationStatus: event.generationStatus }))

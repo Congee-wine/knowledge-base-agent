@@ -86,7 +86,7 @@ export function ChatPage() {
     setSelectedConversationId(null)
     setComposerValue('')
   }
-  const sendMessage = (content: string) => {
+  const sendMessage = (content: string, useKnowledgeBase: boolean) => {
     const normalizedContent = content.trim()
     if (!normalizedContent || stream.sending) return
     setComposerValue('')
@@ -94,6 +94,7 @@ export function ChatPage() {
       agent,
       content: normalizedContent,
       conversationId: selectedConversationId,
+      useKnowledgeBase,
       onConversationCreated: conversationId => {
         const now = new Date().toISOString()
         const createdConversation: Conversation = {

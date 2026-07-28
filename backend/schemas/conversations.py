@@ -32,6 +32,7 @@ class MessageResponse(BaseModel):
     content: str
     generation_status: Literal["generating", "complete", "interrupted", "failed"] = Field(serialization_alias="generationStatus")
     created_at: datetime = Field(serialization_alias="createdAt")
+    citations: list[dict[str, object]] = Field(default_factory=list)
 
 
 class CreateMessageRequest(BaseModel):

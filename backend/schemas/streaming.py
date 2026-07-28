@@ -16,6 +16,7 @@ class StreamRequest(BaseModel):
     request_id: str = Field(alias="requestId", min_length=1, max_length=64)
     content: str = Field(min_length=1, max_length=4000)
     after_sequence: int = Field(default=0, alias="afterSequence", ge=0)
+    use_knowledge_base: bool = Field(default=False, alias="useKnowledgeBase")
 
     @field_validator("content")
     @classmethod
