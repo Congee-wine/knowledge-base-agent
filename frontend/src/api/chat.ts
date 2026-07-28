@@ -85,7 +85,7 @@ function readEvent(payload: unknown): ChatStreamEvent {
   }
   if (type === 'status') {
     if (!['retrieving', 'no_match', 'retrieval_failed', 'context', 'generating'].includes(String(event.stage))) throw new Error('流式状态阶段无效')
-    return { type, mode, requestId, sequence, stage: event.stage, text: readRequiredString(event, 'text') }
+    return { type, mode, requestId, sequence, stage: event.stage as 'retrieving' | 'no_match' | 'retrieval_failed' | 'context' | 'generating', text: readRequiredString(event, 'text') }
   }
   if (type === 'sources') {
     if (!Array.isArray(event.items)) throw new Error('引用事件格式无效')

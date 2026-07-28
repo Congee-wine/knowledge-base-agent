@@ -10,8 +10,7 @@ from schemas.agents import AgentResponse
 from schemas.conversations import ConversationDetailResponse, ConversationResponse, EchoMessageResponse, MessageResponse
 from services.agents import get_agent
 from services.errors import not_found
-from services.agent_runtime import ModelMessage, stream_answer
-from services.retrieval import build_retrieval_context, retrieve_for_agent
+from services.agent_runtime import ModelMessage, stream_with_retrieval
 from integrations.deepseek import DeepSeekError
 
 
@@ -91,23 +90,10 @@ def stream_message(user_id: str, agent_id: str, conversation_id: str | None, con
         answer = ""
         citations: list[dict[str, object]] = []
         try:
-            yield {"type": "status", "stage": "retrieving", "text": "正在检索资料"}
-            try:
-                sources = retrieve_for_agent(user_id, agent_id, content) if (getattr(agent, "kind", "personal") == "personal" or use_knowledge_base) else []
-            except Exception:
-                logger.exception("knowledge retrieval failed", extra={"agent_id": agent_id, "user_id": user_id})
-                sources = []
-                yield {"type": "status", "stage": "retrieval_failed", "text": "资料检索失败，已降级为普通回答"}
-            citations = [source.to_citation() for source in sources]
-            if citations:
-                yield {"type": "status", "stage": "context", "text": f"已命中 {len(citations)} 条资料，正在构造上下文"}
-                yield {"type": "sources", "items": citations}
-            elif getattr(agent, "kind", "personal") == "personal" or use_knowledge_base:
-                yield {"type": "status", "stage": "no_match", "text": "未命中已启用的知识库资料"}
-            yield {"type": "status", "stage": "generating", "text": "正在生成回答"}
-            for delta in stream_answer(agent.system_prompt, history, content, build_retrieval_context(sources)):
-                answer += delta
-                yield {"type": "answer_delta", "content": delta}
+            for event in stream_with_retrieval(user_id, agent_id, agent.kind, agent.system_prompt, history, content, use_knowledge_base):
+                if event["type"] == "answer_delta": answer += str(event["content"])
+                if event["type"] == "sources": citations = list(event["items"])
+                yield event
             conversation_repository.complete_stream_generation(str(assistant_message["id"]), answer, citations)
             yield {"type": "message_end", "messageId": str(assistant_message["id"]), "generationStatus": "complete"}
         except DeepSeekError:

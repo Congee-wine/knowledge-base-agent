@@ -7,6 +7,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, Huma
 from langgraph.graph import END, START, StateGraph
 
 from integrations.deepseek import DeepSeekError, create_chat_model
+from services.retrieval import build_retrieval_context, retrieve_for_agent
 
 
 class ModelMessage(TypedDict):
@@ -39,6 +40,26 @@ def stream_answer(
                     yield text
     except Exception as error:  # LangChain provider errors have multiple concrete types.
         raise DeepSeekError("DeepSeek response is unavailable") from error
+
+
+def stream_with_retrieval(user_id: str, agent_id: str, agent_kind: str, system_prompt: str | None, history: list[ModelMessage], content: str, use_knowledge_base: bool) -> Iterator[dict[str, object]]:
+    enabled = agent_kind == "personal" or use_knowledge_base
+    sources = []
+    if enabled:
+        yield {"type": "status", "stage": "retrieving", "text": "正在检索资料"}
+        try:
+            sources = retrieve_for_agent(user_id, agent_id, content)
+        except Exception:
+            yield {"type": "status", "stage": "retrieval_failed", "text": "资料检索失败，已降级为普通回答"}
+        citations = [source.to_citation() for source in sources]
+        if citations:
+            yield {"type": "status", "stage": "context", "text": f"已命中 {len(citations)} 条资料，正在构造上下文"}
+            yield {"type": "sources", "items": citations}
+        elif sources == []:
+            yield {"type": "status", "stage": "no_match", "text": "未命中已启用的知识库资料"}
+    yield {"type": "status", "stage": "generating", "text": "正在生成回答"}
+    for delta in stream_answer(system_prompt, history, content, build_retrieval_context(sources)):
+        yield {"type": "answer_delta", "content": delta}
 
 
 def _build_runtime_graph():
