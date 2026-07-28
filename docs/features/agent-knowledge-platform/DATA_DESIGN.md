@@ -77,8 +77,8 @@ users ──< agents ──< conversations ──< messages ──< message_cita
 
 ### DB-006：`document_chunks` 与 `ingestion_jobs`
 
-- 分块：`id`、`owner_user_id`、`document_version_id`、`ordinal`、`content`、`page_number`、`metadata_json`、`embedding`、`embedding_model`、`created_at`。
-- 任务：`id`、`document_version_id`、`status`、`attempt_count`、`last_error_code`、`started_at`、`finished_at`。
+- 分块：`id`、`owner_user_id`、`document_version_id`、`ordinal`、`content`、`page_number`、`metadata_json`、`embedding`、`embedding_model`、`created_at`。阶段 3.2B 解析成功后先写入文本分块，`embedding` 与 `embedding_model` 保持空；阶段 3.3 再批量补写向量。
+- 任务：`id`、`document_version_id`、`status`、`attempt_number`、`last_error_code`、`started_at`、`finished_at`。
 - `metadata_json` 仅保存非固定的解析位置（如图片区域），不得替代文件、用户、状态、模型等结构化字段。
 
 ## 4. 索引与查询

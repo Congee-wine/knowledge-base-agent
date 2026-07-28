@@ -1,5 +1,27 @@
 # 问题记录
 
+## Q-20260728-015：为什么 Worker 重建会下载大量 CUDA 依赖并超时
+
+- **日期**：2026-07-28
+- **状态**：已解决
+- **涉及模块**：Docker Worker、依赖管理
+- **用户问题**：重建 Worker 时 pip 下载大量 PyTorch/CUDA 包，最终 HTTPS 读取超时。
+- **问题背景**：原 Dockerfile 安装完整 `requirements.txt`；其中 `FlagEmbedding` 会带入当前解析阶段未使用的 PyTorch 与 CUDA 运行时。
+- **最终结论**：解析 Worker 使用独立的轻量依赖清单，只安装文档提取和基础设施依赖；pip 增加下载超时和重试。Embedding 依赖留待向量化阶段引入。
+- **实现影响**：新增 `backend/requirements.worker.txt`，修改 `backend/Dockerfile.worker`；不影响 API、数据库或主后端依赖。
+- **后续事项**：重新构建 Worker，并验收 PDF 与 DOCX 处理。
+
+## Q-20260728-014：为什么 PDF 与 DOCX 异步处理失败
+
+- **日期**：2026-07-28
+- **状态**：已解决
+- **涉及模块**：Docker Worker、RQ、文档解析
+- **用户问题**：TXT 和 Markdown 可以处理，但 Word 与 PDF 文件处理失败。
+- **问题背景**：上传接口返回 201，说明文件及任务已创建；处理失败发生在后台 Worker。
+- **最终结论**：RQ 失败任务日志显示 Worker 镜像中缺少 `docx` 与 `fitz` 模块。`backend/requirements.txt` 已声明 `python-docx` 和 `PyMuPDF`，但正在运行的镜像尚未按当前依赖清单重建。
+- **实现影响**：无需修改解析逻辑或数据库；必须重建并重启 `knowledge-base-agent-worker`，使 Dockerfile 重新执行依赖安装。
+- **后续事项**：重建后分别上传 PDF、DOCX、TXT、Markdown，完成真实 Worker 验收。
+
 ## Q-20260727-013：流式完成后为何会重复显示首条问答
 
 - **日期**：2026-07-27

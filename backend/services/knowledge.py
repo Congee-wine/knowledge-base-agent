@@ -8,9 +8,10 @@ from typing import Any
 from repositories import knowledge as knowledge_repository
 from schemas.knowledge import KnowledgeNodeResponse
 from integrations.object_storage import put_private_object, remove_private_object
-from config import DOCUMENT_MAX_FILE_SIZE_BYTES
+from config import DOCUMENT_MAX_FILE_SIZE_BYTES, DOCUMENT_PROCESSING_TIMEOUT_SECONDS
 from services.document_validation import validate_document_upload
-from services.errors import file_too_large, invalid_knowledge_move, invalid_parent_node, knowledge_depth_limit_exceeded, knowledge_name_conflict, not_found, processing_unavailable
+from services.errors import document_queue_unavailable, file_too_large, invalid_knowledge_move, invalid_parent_node, knowledge_depth_limit_exceeded, knowledge_name_conflict, not_found
+from workers.queue import get_document_processing_queue
 
 
 logger = logging.getLogger(__name__)
@@ -51,15 +52,19 @@ def upload_file(user_id: str, parent_id: str | None, filename: str, content_type
     if knowledge_repository.sibling_name_exists(user_id, parent_id, filename):
         raise knowledge_name_conflict("同一文件夹中已存在同名资料")
     storage_key = f"knowledge-files/{user_id}/{uuid.uuid4()}/{filename}"
+    put_private_object(storage_key, content, content_type or "application/octet-stream")
     try:
-        put_private_object(storage_key, content, content_type or "application/octet-stream")
-        return _to_node(knowledge_repository.create_uploaded_file(user_id, parent_id, filename, storage_key, content_type or "application/octet-stream", content))
+        node = knowledge_repository.create_uploaded_file(
+            user_id, parent_id, filename, storage_key, content_type or "application/octet-stream", content,
+        )
     except Exception:
         try:
             remove_private_object(storage_key)
         except Exception:
             logger.exception("upload rollback cleanup failed", extra={"storage_key": storage_key})
         raise
+    _enqueue_document_processing(str(node["id"]), user_id)
+    return _to_node(node)
 
 
 def rename_node(user_id: str, node_id: str, name: str) -> KnowledgeNodeResponse:
@@ -103,9 +108,28 @@ def delete_node(user_id: str, node_id: str) -> None:
             logger.exception("knowledge object cleanup failed", extra={"storage_key": storage_key})
 
 
-def request_failed_file_reprocess(_: str, __: str) -> None:
-    """Reserve the API boundary until phase 3.2 can enqueue document jobs safely."""
-    raise processing_unavailable()
+def _enqueue_document_processing(node_id: str, user_id: str) -> None:
+    job_id = knowledge_repository.create_ingestion_job(node_id, user_id)
+    try:
+        get_document_processing_queue().enqueue(
+            "workers.tasks.process_document_ingestion",
+            job_id,
+            job_timeout=DOCUMENT_PROCESSING_TIMEOUT_SECONDS,
+        )
+    except Exception as error:
+        logger.exception("document processing enqueue failed", extra={"node_id": node_id, "job_id": job_id})
+        knowledge_repository.fail_ingestion(job_id, "DOCUMENT_QUEUE_UNAVAILABLE", "文档处理队列暂不可用，请稍后重试")
+        _remove_failed_upload(node_id, user_id)
+        raise document_queue_unavailable() from error
+
+
+def _remove_failed_upload(node_id: str, user_id: str) -> None:
+    storage_keys = knowledge_repository.delete_node_tree(node_id, user_id)
+    for storage_key in storage_keys or []:
+        try:
+            remove_private_object(storage_key)
+        except Exception:
+            logger.exception("failed upload cleanup failed", extra={"storage_key": storage_key})
 
 
 def _build_tree(rows: Sequence[Mapping[str, Any]]) -> list[KnowledgeNodeResponse]:

@@ -17,12 +17,20 @@ const itemIcons = {
   word: <FileWordFilled className="knowledge-item__icon knowledge-item__icon--word" />,
 }
 
+const processingStatusLabels = {
+  uploaded: '处理中',
+  processing: '处理中',
+  ready: '',
+  failed: '',
+}
+
 export function KnowledgeItemGrid({ items, selectedIds, onSelectionChange, onContextMenu, onOpenFolder }: Props) {
   return <div className="knowledge-item-grid">
     {items.map(item => {
       const selected = selectedIds.includes(item.id)
+      const isProcessing = item.processingStatus === 'uploaded' || item.processingStatus === 'processing'
       return <article
-        className={`knowledge-item ${selected ? 'is-selected' : ''}`}
+        className={`knowledge-item ${selected ? 'is-selected' : ''} ${isProcessing ? 'is-processing' : ''}`}
         key={item.id}
         onContextMenu={event => {
           event.preventDefault()
@@ -40,6 +48,9 @@ export function KnowledgeItemGrid({ items, selectedIds, onSelectionChange, onCon
         />
         {itemIcons[item.kind]}
         <p className="knowledge-item__name" title={item.name}>{item.name}</p>
+        {isProcessing && <span className={`knowledge-item__status is-${item.processingStatus}`}>
+          {processingStatusLabels[item.processingStatus]}
+        </span>}
         {item.size && <span className="knowledge-item__size">{item.size}</span>}
       </article>
     })}

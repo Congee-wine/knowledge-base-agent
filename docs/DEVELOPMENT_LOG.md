@@ -1,5 +1,129 @@
 # 开发日志
 
+## 2026-07-28：Worker 解析镜像依赖拆分
+
+### 任务目标
+
+解决重建文档 Worker 时因下载尚未使用的深度学习依赖而发生超时的问题。
+
+### 实现内容
+
+- 新增 `backend/requirements.worker.txt`，仅保留阶段 3.2B 的 PostgreSQL、MinIO、RQ、PDF 与 DOCX 解析依赖。
+- `Dockerfile.worker` 改用轻量清单，并设置 pip 120 秒超时和 5 次重试。
+- `FlagEmbedding` 与其 PyTorch/CUDA 依赖继续保留在主依赖清单，待向量化 Worker 实现时再引入镜像。
+
+### 主要文件
+
+- `backend/requirements.worker.txt`：文档解析 Worker 的最小运行依赖。
+- `backend/Dockerfile.worker`：轻量依赖安装与网络重试配置。
+
+### 接口或数据变化
+
+无。
+
+### 验证情况
+
+- 已根据 Docker 构建日志确认失败发生在未使用的 PyTorch/CUDA 依赖下载阶段。
+- 待在用户 Docker 环境中重新构建镜像验证。
+
+### 遗留问题
+
+- 向量化阶段需要单独扩展 Worker 镜像或为该镜像增加 Embedding 依赖。
+
+## 2026-07-28：异步入库成功语义调整
+
+### 任务目标
+
+将“上传成功”定义为源文件已解析并成功加入知识库，而非仅完成对象存储写入。
+
+### 实现内容
+
+- 已完成处理的文件不显示成功标签，按普通资料样式展示。
+- 处理中资料维持灰化外观和“处理中”文字，不显示额外图标。
+- Worker 解析失败或队列投递失败时，清理资料树记录、关联数据和对象存储源文件；前端提示“文件处理失败，未加入知识库”。
+- 移除失败文件重新处理接口和右键入口；用户可在修正源文件后重新上传。
+
+### 主要文件
+
+- `backend/workers/tasks.py`：解析失败后的递归资料与对象清理。
+- `backend/services/knowledge.py`：队列投递失败后的上传回滚。
+- `frontend/src/features/knowledge/components/KnowledgeItemGrid.tsx`：处理中和完成后的展示规则。
+- `frontend/src/pages/KnowledgeBasePage.tsx`：识别待处理文件消失并提示失败。
+
+### 接口或数据变化
+
+- 移除 `POST /api/knowledge/files/{file_id}/reprocess`。
+- 不新增数据库迁移。
+
+### 验证情况
+
+- 通过：后端 `unittest` 14 项、Python 编译检查、前端 `pnpm exec tsc --noEmit`、`git diff --check`。
+
+### 遗留问题
+
+- 仍需在真实 Redis/RQ、MinIO 环境中完成文件处理成功与失败清理的浏览器验收。
+
+## 2026-07-28：资料处理中视觉状态调整
+
+### 任务目标
+
+让正在解析的资料以低饱和灰色展示，并使用明确的“处理中”标记。
+
+### 实现内容
+
+- `uploaded` 与 `processing` 都展示为“处理中”，避免用户看到内部队列术语。
+- 处理中资料的文件图标、名称和大小统一使用灰色；状态行使用 AI 标记和蓝色“处理中”文本。
+
+### 主要文件
+
+- `frontend/src/features/knowledge/components/KnowledgeItemGrid.tsx`：根据处理状态增加视觉类名和标记。
+- `frontend/src/style.css`：定义处理中资料的灰化与状态标记样式。
+
+### 接口或数据变化
+
+无。
+
+### 验证情况
+
+- 通过：前端 `pnpm exec tsc --noEmit`、`git diff --check`。
+
+### 遗留问题
+
+- 仍需浏览器端确认与设计参考图的实际视觉一致性。
+
+## 2026-07-28：阶段 3.2B 异步解析与处理状态首轮实现
+
+### 任务目标
+
+将文本型资料投递到后台 Worker，并在资料树中显示临时处理状态；失败时不保留为知识库资料。
+
+### 实现内容
+
+- 上传成功后创建处理任务并投递至 `document-processing` RQ 队列。
+- Worker 从私有对象存储读取源文件，提取 PDF、TXT、Markdown、DOCX 文本并写入 `document_chunks`。
+- 处理状态按 `uploaded → processing → ready / failed` 更新；队列投递失败会保留文件并标记失败。
+- 前端在存在待处理文件时每 3 秒刷新资料树；只有处理中显示临时标记，完成后显示为普通文件。
+
+### 主要文件
+
+- `backend/services/knowledge.py`：上传后的任务创建、投递和失败处理。
+- `backend/workers/tasks.py`：Worker 文件读取、文本提取和状态收口。
+- `backend/repositories/knowledge.py`：处理任务、状态和分块持久化。
+- `frontend/src/pages/KnowledgeBasePage.tsx`：状态轮询与失败提示。
+
+### 接口或数据变化
+
+- 不新增数据库迁移；使用已存在的 `ingestion_jobs` 和 `document_chunks` 表。
+
+### 验证情况
+
+- 通过：后端 `unittest` 14 项（包含 TXT、PDF、DOCX 提取）、Python 编译检查、前端 `pnpm exec tsc --noEmit`、`git diff --check`。
+- 未执行：真实 Redis/RQ Worker、MinIO 与四种格式的端到端处理；需在完整 Worker 环境中验证。
+
+### 遗留问题
+
+- 向量化、向量库写入、检索和文件预览仍未开始。
+
 ## 2026-07-27：流式聊天阶段收尾与知识库实施准备
 
 ### 任务目标
@@ -2774,3 +2898,30 @@ Ant Design X 仅承担 AI 交互展示，避免与业务接口、鉴权和状态
 ### 遗留问题
 
 - 仍需浏览器上传 0 KB DOCX，确认界面显示新的明确提示。
+
+## 2026-07-28：阶段 3.2A 上传验收完成
+
+### 任务目标
+
+确认四种允许格式的单文件与文件夹上传、限制和资料树写入达到当前验收要求。
+
+### 实现内容
+
+- 用户已验证单文件和文件夹上传基本正常。
+- 阶段目标转入异步解析、处理状态、失败重试和预览。
+
+### 主要文件
+
+- `docs/PROJECT_STATUS.md`：当前阶段更新为 3.2B。
+
+### 接口或数据变化
+
+无。
+
+### 验证情况
+
+- 用户已验证：上传文件与文件夹基本正常。
+
+### 遗留问题
+
+- 文件尚未投递 Worker，仍停留在 `uploaded` 状态，不能参与检索或提供内容预览。

@@ -6,6 +6,14 @@ class DomainError(Exception):
         self.message = message
 
 
+def document_queue_unavailable() -> DomainError:
+    return DomainError(503, "DOCUMENT_QUEUE_UNAVAILABLE", "文档已保存，但处理队列暂不可用；请稍后重试处理")
+
+
+def document_not_failed() -> DomainError:
+    return DomainError(409, "DOCUMENT_NOT_FAILED", "仅处理失败的文档可以重试")
+
+
 def not_found() -> DomainError:
     return DomainError(404, "RESOURCE_NOT_FOUND", "资源不存在或无权访问")
 

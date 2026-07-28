@@ -13,6 +13,7 @@ function flattenNodes(nodes: KnowledgeNode[]): KnowledgeItem[] {
   return nodes.flatMap(node => [{
     id: node.id, parentId: node.parentId ?? undefined, name: node.name,
     kind: node.nodeType === 'folder' ? 'folder' : getFileKind(node),
+    processingStatus: node.status ?? undefined,
   }, ...flattenNodes(node.children)])
 }
 
@@ -42,13 +43,33 @@ export function KnowledgeBasePage() {
   const [contextItem, setContextItem] = useState<{ item: KnowledgeItem; position: { x: number; y: number } } | null>(null)
   const uploadInputRef = useRef<HTMLInputElement>(null)
   const folderUploadInputRef = useRef<HTMLInputElement>(null)
+  const pendingItemIdsRef = useRef(new Set<string>())
   const invalidateTree = () => queryClient.invalidateQueries({ queryKey: knowledgeKeys.tree })
   const createMutation = useMutation({ mutationFn: () => createKnowledgeFolder(currentFolderId ?? null, folderName.trim()), onSuccess: () => { void invalidateTree(); setCreateModalOpen(false); setFolderName(''); message.success('文件夹已创建') }, onError: () => message.error('创建文件夹失败，请检查名称后重试') })
   const renameMutation = useMutation({ mutationFn: () => renameKnowledgeNode(renameItem!.id, renameValue.trim()), onSuccess: () => { void invalidateTree(); setRenameItem(null); message.success('已重命名') }, onError: () => message.error('重命名失败，请检查名称是否重复') })
   const moveMutation = useMutation({ mutationFn: async () => Promise.all(moveItemIds.map(id => moveKnowledgeNode(id, targetFolderId))), onSuccess: () => { void invalidateTree(); setSelectedIds([]); setMoveItemIds([]); setMoveModalOpen(false); message.success('已移动') }, onError: () => message.error('移动失败；目标不能是自身或其子文件夹，且不能同名') })
   const deleteMutation = useMutation({ mutationFn: async (ids: string[]) => Promise.all(ids.map(deleteKnowledgeNode)), onSuccess: () => { void invalidateTree(); setSelectedIds([]); message.success('已删除') }, onError: () => message.error('删除失败，请重试') })
-  const uploadMutation = useMutation({ mutationFn: (file: File) => uploadKnowledgeFile(currentFolderId ?? null, file), onSuccess: () => { void invalidateTree(); message.success('文件已上传，等待后续处理') }, onError: error => message.error(error instanceof Error ? `上传失败：${error.message}` : '上传失败，请重试') })
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => uploadKnowledgeFile(currentFolderId ?? null, file),
+    onSuccess: node => { pendingItemIdsRef.current.add(node.id); void invalidateTree(); message.success('文件已上传，等待后续处理') },
+    onError: error => { void invalidateTree(); message.error(error instanceof Error ? `上传失败：${error.message}` : '上传失败，请重试') },
+  })
   const items = useMemo(() => flattenNodes(treeQuery.data?.items ?? []), [treeQuery.data])
+  const hasPendingDocuments = items.some(item => item.processingStatus === 'uploaded' || item.processingStatus === 'processing')
+  useEffect(() => {
+    const itemIds = new Set(items.map(item => item.id))
+    if ([...pendingItemIdsRef.current].some(itemId => !itemIds.has(itemId))) {
+      message.error('文件处理失败，未加入知识库')
+    }
+    pendingItemIdsRef.current = new Set(items
+      .filter(item => item.processingStatus === 'uploaded' || item.processingStatus === 'processing')
+      .map(item => item.id))
+  }, [items])
+  useEffect(() => {
+    if (!hasPendingDocuments) return
+    const timer = window.setInterval(() => { void queryClient.invalidateQueries({ queryKey: knowledgeKeys.tree }) }, 3000)
+    return () => window.clearInterval(timer)
+  }, [hasPendingDocuments, queryClient])
   useEffect(() => {
     if (!currentFolderId || items.some(item => item.id === currentFolderId)) return
     setCurrentFolderId(undefined)
@@ -67,7 +88,7 @@ export function KnowledgeBasePage() {
   }, [currentFolderId, items])
   const visibleItems = useMemo(() => {
     const keyword = searchText.trim().toLocaleLowerCase()
-    return items.filter(item => item.parentId === currentFolderId && (!keyword || item.name.toLocaleLowerCase().includes(keyword)))
+    return items.filter(item => item.processingStatus !== 'failed' && item.parentId === currentFolderId && (!keyword || item.name.toLocaleLowerCase().includes(keyword)))
   }, [currentFolderId, items, searchText])
   const moveTargets = items.filter(item => item.kind === 'folder' && !moveItemIds.includes(item.id))
   const folderCount = visibleItems.filter(item => item.kind === 'folder').length
@@ -127,7 +148,8 @@ export function KnowledgeBasePage() {
           path = path ? `${path}/${directory}` : directory
           if (!folderIds.has(path)) folderIds.set(path, (await createKnowledgeFolder(parentId, directory)).id)
         }
-        await uploadKnowledgeFile(folderIds.get(path) ?? null, file)
+        const uploadedNode = await uploadKnowledgeFile(folderIds.get(path) ?? null, file)
+        pendingItemIdsRef.current.add(uploadedNode.id)
       }
       await invalidateTree()
       message.success(`已上传文件夹中的 ${files.length} 个文件，等待后续处理`)

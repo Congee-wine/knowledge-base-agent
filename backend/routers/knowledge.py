@@ -49,12 +49,3 @@ def update_knowledge_node(node_id: str, data: UpdateKnowledgeNodeRequest, curren
 def delete_knowledge_node(node_id: str, current_user: Annotated[UserResponse, Depends(get_current_user)]) -> Response:
     knowledge_service.delete_node(current_user.id, node_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-@router.post("/files/{file_id}/reprocess", status_code=status.HTTP_501_NOT_IMPLEMENTED)
-def reprocess_failed_file(
-    file_id: str,
-    current_user: Annotated[UserResponse, Depends(get_current_user)],
-) -> Response:
-    knowledge_service.request_failed_file_reprocess(current_user.id, file_id)
-    return Response(status_code=status.HTTP_501_NOT_IMPLEMENTED)

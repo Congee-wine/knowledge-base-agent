@@ -21,9 +21,9 @@
 1. `KnowledgeService` 验证父文件夹属于当前用户并创建文件、版本和任务记录。
 2. 原始文件写入对象存储；数据库文件状态变更为 `processing`。
 3. Worker 根据 MIME 类型调用 PDF 文本提取、TXT/Markdown 读取或 `.docx` 正文提取，得到统一文本和页码/段落位置元数据；扫描版 PDF 因无 OCR 不支持而标记失败。
-4. `retrieval` 使用 LangChain 文本切分器生成分块；Markdown 优先按标题结构切分，其余文本采用递归切分。
-5. Embedding 适配器批量生成向量；仓储层写入分块、元数据和 pgvector 向量。
-6. 事务成功后文件标记 `ready`；任一不可恢复错误标记 `failed` 并写入安全的错误摘要。
+4. Worker 将解析出的文本持久化为 `document_chunks`（本阶段 `embedding` 为空）：PDF 按页保存，其余格式先保存为单个文本分块。该结果同时供后续预览与向量化复用；标题和递归切分将在向量化阶段实现。
+5. 后续 Embedding 阶段批量补写这些分块的 pgvector 向量，不重复解析源文件。
+6. 文本持久化成功后文件标记 `ready`；任一不可恢复错误标记 `failed` 并写入安全的错误摘要。
 
 ## 3. 聊天 LangGraph 工作流
 
