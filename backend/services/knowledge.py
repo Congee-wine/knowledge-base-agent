@@ -38,6 +38,7 @@ def create_folder(user_id: str, parent_id: str | None, name: str) -> KnowledgeNo
 
 
 def upload_file(user_id: str, parent_id: str | None, filename: str, content_type: str | None, content: bytes) -> KnowledgeNodeResponse:
+    filename = filename.replace("\\", "/").rsplit("/", maxsplit=1)[-1]
     if len(content) > DOCUMENT_MAX_FILE_SIZE_BYTES:
         raise file_too_large()
     validate_document_upload(filename, content_type, content)
@@ -124,5 +125,6 @@ def _to_node(row: Mapping[str, Any]) -> KnowledgeNodeResponse:
     return KnowledgeNodeResponse(
         id=str(row["id"]), parent_id=str(row["parent_id"]) if row["parent_id"] else None,
         node_type=row["node_type"], name=row["name"], status=row.get("processing_status"),
+        mime_type=row.get("mime_type"), byte_size=row.get("byte_size"),
         created_at=row["created_at"], updated_at=row["updated_at"],
     )

@@ -15,6 +15,7 @@ type Props = {
   onMenuChange: (menu: MenuKind) => void
   onCreateFolder: () => void
   onUploadFile: () => void
+  onUploadFolder: () => void
 }
 
 type ActionItem = { label: string; icon: ReactNode; tone?: string }
@@ -32,6 +33,7 @@ function ActionPanel({
   compact = false,
   onCreateFolder,
   onUploadFile,
+  onUploadFolder,
 }: {
   title: string
   items: ActionItem[]
@@ -39,11 +41,12 @@ function ActionPanel({
   compact?: boolean
   onCreateFolder?: () => void
   onUploadFile?: () => void
+  onUploadFolder?: () => void
 }) {
   return <div className={`knowledge-action-panel ${compact ? 'knowledge-action-panel--compact' : ''}`} role="menu">
     <p className="knowledge-action-panel__section-title">{title}</p>
     <div className="knowledge-action-panel__items">
-      {items.map(item => <button key={item.label} type="button" className="knowledge-action-panel__item" role="menuitem" onClick={item.label === '文件' ? onUploadFile : undefined}>
+      {items.map(item => <button key={item.label} type="button" className="knowledge-action-panel__item" role="menuitem" onClick={item.label === '文件' ? onUploadFile : item.label === '文件夹' ? onUploadFolder : undefined}>
         <span className={item.tone}>{item.icon}</span>
         {item.label}
       </button>)}
@@ -60,7 +63,7 @@ function ActionPanel({
   </div>
 }
 
-export function KnowledgeActionMenus({ activeMenu, onMenuChange, onCreateFolder, onUploadFile }: Props) {
+export function KnowledgeActionMenus({ activeMenu, onMenuChange, onCreateFolder, onUploadFile, onUploadFolder }: Props) {
   const uploadItems: ActionItem[] = [
     { label: '文件', icon: <UploadOutlined />, tone: 'is-upload' },
     { label: '文件夹', icon: <FolderOpenFilled />, tone: 'is-folder-upload' },
@@ -82,7 +85,7 @@ export function KnowledgeActionMenus({ activeMenu, onMenuChange, onCreateFolder,
       <button className="knowledge-toolbar-button" type="button" onClick={() => onMenuChange(activeMenu === 'upload' ? null : 'upload')}>
         <UploadOutlined /> 上传
       </button>
-      {activeMenu === 'upload' && <ActionPanel compact title="仅支持 PDF、TXT、Markdown、DOCX" items={uploadItems} onUploadFile={onUploadFile} />}
+      {activeMenu === 'upload' && <ActionPanel compact title="仅支持 PDF、TXT、Markdown、DOCX" items={uploadItems} onUploadFile={onUploadFile} onUploadFolder={onUploadFolder} />}
     </div>
   </div>
 }

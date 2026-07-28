@@ -13,7 +13,7 @@ def list_nodes(user_id: str) -> Sequence[Mapping[str, Any]]:
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
-                """SELECT node.*, version.processing_status
+                """SELECT node.*, version.processing_status, version.mime_type, version.byte_size
                 FROM knowledge_nodes node
                 LEFT JOIN document_versions version
                   ON version.knowledge_node_id = node.id AND version.is_current

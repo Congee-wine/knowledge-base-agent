@@ -7,6 +7,8 @@ export type KnowledgeNode = {
   nodeType: 'folder' | 'file'
   name: string
   status: 'uploaded' | 'processing' | 'ready' | 'failed' | null
+  mimeType: string | null
+  byteSize: number | null
   createdAt: string
   updatedAt: string
   children: KnowledgeNode[]
