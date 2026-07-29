@@ -20,7 +20,7 @@ type Props = {
   steps: ChatRunStep[]
 }
 
-const retrievalStages = ['retrieving', 'context', 'no_match', 'retrieval_failed']
+const retrievalStages = ['retrieving', 'context', 'no_documents', 'no_match', 'retrieval_failed']
 
 function isRetrievalStep(step: ChatRunStep) {
   return retrievalStages.some((stage) => step.id.startsWith(`${stage}-`))
@@ -39,10 +39,10 @@ function groupSteps(steps: ChatRunStep[]): RunStepGroup[] {
 
   const firstRetrievalIndex = steps.findIndex(isRetrievalStep)
   const latestStep = retrievalSteps.at(-1)
-  const matchedSources = latestStep?.title.match(/已命中\s*(\d+)\s*条资料/)
+  const adoptedSources = latestStep?.title.match(/采用\s*(\d+)\s*篇资料、\s*(\d+)\s*个相关片段/)
   const retrievalGroup: RunStepGroup = {
     children: retrievalSteps,
-    description: matchedSources ? `命中 ${matchedSources[1]} 条资料` : undefined,
+    description: adoptedSources ? `采用 ${adoptedSources[1]} 篇资料、${adoptedSources[2]} 个相关片段` : undefined,
     id: 'knowledge-retrieval',
     status: getGroupStatus(retrievalSteps),
     title: getGroupStatus(retrievalSteps) === 'loading' ? '正在检索知识库' : '已检索知识库',

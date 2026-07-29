@@ -9,6 +9,13 @@ from workers import tasks
 
 
 class DocumentWorkerTaskTests(unittest.TestCase):
+    @patch("workers.tasks.rerank", return_value=[0.8, 0.2])
+    def test_reranker_task_delegates_to_local_model(self, rerank: MagicMock) -> None:
+        scores = tasks.rerank_query_candidates("数据库基础知识", ["数据库定义", "游标分页"])
+
+        self.assertEqual(scores, [0.8, 0.2])
+        rerank.assert_called_once_with("数据库基础知识", ["数据库定义", "游标分页"])
+
     def test_plain_text_extraction_returns_one_chunk(self) -> None:
         self.assertEqual(
             tasks._extract_chunks("text/plain", "第一段\n第二段".encode()),

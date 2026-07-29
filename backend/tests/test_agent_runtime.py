@@ -33,30 +33,55 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertEqual([event["type"] for event in events], ["status", "answer_delta"])
         self.assertNotIn("模型", str(events[-1]["content"]))
 
-    @patch("services.agent_runtime.stream_answer", return_value=iter(["通用回答"]))
+    @patch("services.agent_runtime.stream_answer", return_value=iter(["资料", "回答"]))
     @patch("services.agent_runtime.execute_knowledge_operation")
-    @patch("services.agent_runtime.decide_strategy", return_value=RuntimeStrategy("direct_answer", False))
-    def test_direct_strategy_does_not_query_knowledge_base(self, _: object, execute_operation: object, __: object) -> None:
+    @patch("services.agent_runtime.has_ready_knowledge", return_value=True)
+    def test_general_question_always_queries_ready_knowledge_base(self, _: object, execute_operation: object, __: object) -> None:
+        execute_operation.return_value = [RetrievalSource("chunk-1", "document-1", "mysql.md", "数据库基础知识", None, 0, None, 0.8)]
         events = list(stream_with_retrieval("user-1", "agent-1", "personal", None, [], "解释向量数据库", False))
 
-        execute_operation.assert_not_called()
-        self.assertEqual([event["type"] for event in events], ["status", "status", "answer_delta"])
-        self.assertEqual(events[-1]["content"], "通用回答")
+        execute_operation.assert_called_once_with("semantic_search", "user-1", "agent-1", "解释向量数据库")
+        answer_chunks = [event["content"] for event in events if event["type"] == "answer_delta"]
+        self.assertEqual(answer_chunks, ["资料", "回答"])
 
-    @patch("services.agent_runtime.stream_answer", return_value=iter(["请上传对应制度或说明具体文件。 "]))
+    @patch("services.agent_runtime.stream_answer")
     @patch("services.agent_runtime.execute_knowledge_operation", return_value=[])
-    @patch("services.agent_runtime.decide_strategy", return_value=RuntimeStrategy("knowledge_answer", True))
-    def test_missing_required_private_evidence_becomes_clarification(self, _: object, __: object, ___: object) -> None:
+    @patch("services.agent_runtime.has_ready_knowledge", return_value=True)
+    def test_no_matching_knowledge_does_not_fall_back_to_model_answer(self, _: object, __: object, stream_answer: object) -> None:
         events = list(stream_with_retrieval("user-1", "agent-1", "personal", None, [], "根据制度回答", False))
 
         stages = [event.get("stage") for event in events if event["type"] == "status"]
         self.assertIn("no_match", stages)
-        self.assertIn("clarifying", stages)
+        stream_answer.assert_not_called()
         self.assertEqual(events[-1]["type"], "answer_delta")
+        self.assertIn("未找到", str(events[-1]["content"]))
+
+    @patch("services.agent_runtime.stream_answer")
+    @patch("services.agent_runtime.execute_knowledge_operation", side_effect=TimeoutError("worker timeout"))
+    @patch("services.agent_runtime.has_ready_knowledge", return_value=True)
+    def test_retrieval_failure_is_not_reported_as_no_match(self, _: object, __: object, stream_answer: object) -> None:
+        events = list(stream_with_retrieval("user-1", "agent-1", "personal", None, [], "database basics", False))
+
+        stages = [event.get("stage") for event in events if event["type"] == "status"]
+        self.assertIn("retrieval_failed", stages)
+        self.assertNotIn("no_match", stages)
+        stream_answer.assert_not_called()
+        self.assertIn("\u77e5\u8bc6\u5e93", str(events[-1]["content"]))
 
     @patch("services.agent_runtime.stream_answer")
     @patch("services.agent_runtime.execute_knowledge_operation")
-    @patch("services.agent_runtime.decide_strategy", return_value=RuntimeStrategy("knowledge_answer", True, "document_catalog"))
+    @patch("services.agent_runtime.has_ready_knowledge", return_value=False)
+    def test_missing_ready_documents_reports_knowledge_base_unavailable(self, _: object, execute_operation: object, stream_answer: object) -> None:
+        events = list(stream_with_retrieval("user-1", "agent-1", "personal", None, [], "数据库基础知识", False))
+
+        execute_operation.assert_not_called()
+        stream_answer.assert_not_called()
+        self.assertIn("no_documents", [event.get("stage") for event in events if event["type"] == "status"])
+        self.assertIn("没有已完成索引", str(events[-1]["content"]))
+
+    @patch("services.agent_runtime.stream_answer")
+    @patch("services.agent_runtime.execute_knowledge_operation")
+    @patch("services.agent_runtime.has_ready_knowledge", return_value=True)
     def test_catalog_operation_lists_tool_documents_without_model(self, _: object, execute_operation: object, stream_answer: object) -> None:
         execute_operation.return_value = [
             RetrievalSource("chunk-1", "document-1", "资料一.md", "内容", None, 0, None, 1.0),

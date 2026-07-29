@@ -13,6 +13,10 @@ class RetrievalSource:
     paragraph_ordinal: int | None
     section_title: str | None
     score: float
+    vector_rank: int | None = None
+    keyword_rank: int | None = None
+    fusion_score: float | None = None
+    rerank_score: float | None = None
 
     def to_citation(self) -> dict[str, object]:
         location = f"第 {self.page_number} 页" if self.page_number is not None else self.section_title

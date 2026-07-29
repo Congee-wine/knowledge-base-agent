@@ -78,6 +78,25 @@ services:
       - worker-model-cache:/models/bge
     restart: unless-stopped
 
+  retrieval-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.embedding-worker
+    container_name: knowledge-base-agent-retrieval-worker
+    command: python -c "from workers.runner import run_retrieval_worker; run_retrieval_worker()"
+    env_file:
+      - ./backend/.env
+      - ./backend/.env.worker
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - worker-model-cache:/models/bge
+    restart: unless-stopped
+
 volumes:
   redis-data:
   minio-data:

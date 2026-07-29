@@ -9,7 +9,7 @@ type StreamEventBase = {
   sequence: number
 }
 
-type ChatRunStage = 'analyzing' | 'clarifying' | 'retrieving' | 'no_match' | 'retrieval_failed' | 'context' | 'generating'
+type ChatRunStage = 'analyzing' | 'clarifying' | 'retrieving' | 'no_documents' | 'no_match' | 'retrieval_failed' | 'context' | 'generating'
 
 export type ChatStreamEvent =
   | ({
@@ -86,7 +86,7 @@ function readEvent(payload: unknown): ChatStreamEvent {
     }
   }
   if (type === 'status') {
-    if (!['analyzing', 'clarifying', 'retrieving', 'no_match', 'retrieval_failed', 'context', 'generating'].includes(String(event.stage))) throw new Error('流式状态阶段无效')
+if (!['analyzing', 'clarifying', 'retrieving', 'no_documents', 'no_match', 'retrieval_failed', 'context', 'generating'].includes(String(event.stage))) throw new Error('流式状态阶段无效')
     return { type, mode, requestId, sequence, stage: event.stage as ChatRunStage, text: readRequiredString(event, 'text') }
   }
   if (type === 'sources') {

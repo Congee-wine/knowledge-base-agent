@@ -11,6 +11,7 @@ from integrations.object_storage import create_object_storage_client, get_object
 from repositories import knowledge as knowledge_repository
 from retrieval.chunking import SourceText, split_mixed
 from integrations.embeddings import embed_texts
+from integrations.reranker import rerank
 from workers.queue import get_embedding_queue
 from config import DOCUMENT_EMBEDDING_BATCH_SIZE
 
@@ -148,3 +149,8 @@ def _embed_in_batches(contents: list[str]) -> list[list[float]]:
 def embed_query_text(content: str) -> list[float]:
     """Short synchronous-request task; model ownership remains in embedding Worker."""
     return embed_texts([content])[0]
+
+
+def rerank_query_candidates(query: str, passages: list[str]) -> list[float]:
+    """Score query-passage pairs in the embedding Worker that owns local models."""
+    return rerank(query, passages)

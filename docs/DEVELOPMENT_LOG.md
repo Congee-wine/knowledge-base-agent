@@ -3380,6 +3380,128 @@ Ant Design X 仅承担 AI 交互展示，避免与业务接口、鉴权和状态
 
 - 无新增问题。
 
+## 2026-07-29：知识库模式检索必经工作流
+
+### 任务目标
+
+消除大模型在检索前判定“是否需要知识库”造成的漏检索，确保已配置知识库的智能体优先依据授权资料回答。
+
+### 实现内容
+
+- 个人智能体或显式启用知识库时，运行图先检查授权范围是否存在 ready 索引文件。
+- 有 ready 文件时，资料目录查询读取真实元数据，其余问题一律执行语义检索；不再调用大模型进行检索开关判断。
+- 无 ready 文件返回 `no_documents`；检索无有效来源返回 `no_match`；两种终态都不调用聊天模型生成通用回答。
+- 向量候选增加分数阈值过滤，保留最多 5 条有效上下文。
+- 前端流式阶段校验和检索步骤分组支持 `no_documents`。
+
+### 主要文件
+
+- `backend/services/agent_runtime.py`：LangGraph 的资料就绪检查、检索必经路由和无资料/无匹配终态。
+- `backend/services/agent_strategy.py`：确定性资料目录识别与默认语义检索策略。
+- `backend/services/retrieval.py`、`backend/repositories/knowledge_retrieval.py`：资料就绪查询和相关度过滤。
+- `backend/tests/test_agent_runtime.py`、`backend/tests/test_agent_strategy.py`、`backend/tests/test_retrieval.py`：工作流与阈值回归测试。
+- `frontend/src/api/chat.ts`、`frontend/src/features/chat/components/ChatRunSummary.tsx`：新增流式阶段的类型校验与展示归组。
+
+### 技术方案
+
+把“是否检索”从不稳定的模型分类改为知识库模式的确定性系统规则；模型仅在检索证据有效时负责基于上下文生成回答。资料目录作为真实元数据查询保留，避免将目录问题误做内容问答。
+
+### 接口或数据变化
+
+- SSE `status.stage` 新增 `no_documents`；无数据库迁移或外部依赖变化。
+
+### 验证情况
+
+- 通过：后端运行时、策略、检索和流式协议单元测试共 16 项。
+- 待执行：前端类型检查、前端 SSE 解析测试与真实文档端到端验收。
+
+### 遗留问题
+
+- `MIN_RELEVANCE_SCORE=0.30` 是初始阈值，需使用真实语料观察召回结果后再校准；当前未实现混合检索或重排。
+
+### 更正说明
+
+- 初版资料就绪查询错误引用了不存在的 `document_versions.owner_user_id` 字段，导致运行时 SQL 失败。现已改为使用关联 `knowledge_nodes.owner_user_id`，并增加仓储层回归测试防止该字段错误再次出现。
+
+## 2026-07-29：恢复知识库回答的逐块流式输出
+
+### 任务目标
+
+修复知识库工作流改造后模型内容在 LangGraph 节点内被聚合，前端只能一次性显示完整回答的问题。
+
+### 实现内容
+
+- 将运行图末端节点调整为仅准备模型调用所需的受控上下文。
+- 在 SSE 事件生成阶段直接迭代模型流，将每个内容块转换为独立 `answer_delta`。
+- 资料目录、无资料和无匹配等不调用模型的固定回答仍保持单次事件输出。
+- 更新运行时测试，验证同一回答的多个模型内容块会按顺序透传。
+
+### 主要文件
+
+- `backend/services/agent_runtime.py`：分离工作流回答准备与 SSE 文本块转发。
+- `backend/tests/test_agent_runtime.py`：逐块 `answer_delta` 回归测试。
+- `docs/ARCHITECTURE.md`、`docs/PROJECT_STATUS.md`：同步真实运行链路和验证状态。
+
+### 技术方案
+
+保持 LangGraph 对权限、检索和证据的可观测编排边界；将天然适合迭代的模型流移到图节点完成后的 SSE 适配层，避免节点返回前等待全部模型输出。
+
+### 接口或数据变化
+
+无；复用既有 `answer_delta` SSE 契约。
+
+### 验证情况
+
+- 通过：后端运行时、策略、检索和流式协议定向测试共 17 项；Python 编译检查与 `git diff --check`。
+- 待执行：浏览器人工确认逐字/逐段显示。
+
+### 遗留问题
+
+- 无新增问题。
+
+## 2026-07-29：检索质量升级
+
+### 任务目标
+
+消除游标分页等弱相关资料在数据库知识和简历问题中反复进入引用的情况，并统一分块命中与文件引用的用户可见口径。
+
+### 实现内容
+
+- 向量与关键词分别召回候选，以 RRF 融合后送入本地 `bge-reranker-v2-m3`。
+- 重排结果按阈值、每文件最多两段、最多三篇文件和最多五段上下文筛选。
+- 最终来源才进入模型上下文、SSE `sources` 与持久化引用；检索摘要改为采用的文件数和相关片段数。
+- 新增关键词 trigram 索引、检索运行与候选诊断迁移；查询仅记录哈希，不保存原文。
+
+### 主要文件
+
+- `backend/services/retrieval.py`：混合融合、重排和上下文限额。
+- `backend/integrations/reranker.py`、`backend/workers/tasks.py`：本地 reranker 与 Worker 任务。
+- `backend/repositories/knowledge_retrieval.py`、`backend/migrations/versions/20260729_0012_retrieval_observability.py`：关键词候选和诊断持久化。
+- `frontend/src/features/chat/components/ChatRunSummary.tsx`：检索摘要口径。
+
+### 技术方案
+
+候选召回不直接作为回答依据；最终依据只能来自通过重排和文件级限额筛选的分块，防止弱相关文件进入引用。
+
+### 接口或数据变化
+
+- 新增数据库迁移 `20260729_0012`；SSE `context` 文案变更，事件结构不变。
+
+### 验证情况
+
+- 通过：后端相关定向测试 23 项、Python 编译检查、前端 TypeScript 检查与 5 项前端测试、`git diff --check`。
+- 未执行：迁移应用、embedding Worker 重建、reranker 模型下载及真实语料端到端验证。
+
+### 遗留问题
+
+- `RERANK_MIN_SCORE=0.30` 与候选规模为初始值，需要在真实文档集上校准。
+
+### 环境验证更正
+
+- 已执行 Alembic `20260729_0012` 迁移，并重建 embedding Worker。
+- 首次 reranker 加载发现 FlagEmbedding 与 Transformers 5 不兼容，已在 Worker 依赖中限制 `transformers<5.0`；现有 Worker 已安装兼容的 4.57.6 版本。
+- 本地样例中，“数据库基础知识”对数据库定义的重排分为 `0.7339`，对游标分页段落为 `0.0243`，证明重排模型可区分该类弱相关内容。真实资料与正式聊天端到端验证仍待用户执行。
+
 ## 2026-07-29：移除资料引用悬停高亮
 
 ### 任务目标

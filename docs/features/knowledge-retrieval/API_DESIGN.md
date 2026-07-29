@@ -1,5 +1,7 @@
 # 接口设计
 
-聊天现有接口后续扩展返回结构化 `citations`，每项包含：`documentId`、`fileName`、`pageNumber`（可空）、`sectionTitle`（可空）、`paragraphOrdinal`（可空）、`snippet` 和预览路由所需的文件 ID。
+聊天现有接口返回结构化 `citations`，每项包含：`documentNodeId`、`documentName`、`location`、`snippet` 和预览路由所需的文件 ID；它们只能来自最终上下文来源。
 
-内部检索服务输入为用户 ID、智能体 ID、查询文本；输出最多 5 个已授权来源。服务内部固定执行当前用户、`ready` 文件和智能体资料范围过滤，调用方不得绕过。
+内部检索服务输入为用户 ID、智能体 ID、查询文本与可选关联消息 ID；输出最终上下文来源及可追踪的运行 ID。服务内部固定执行当前用户、`ready` 文件和智能体资料范围过滤、混合候选召回、重排和文件级限额，调用方不得绕过。
+
+SSE `context` 状态使用“采用 N 篇资料、M 个相关片段”文案；不对用户暴露候选总数、内部评分或模型推理。

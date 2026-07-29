@@ -1,13 +1,31 @@
 from __future__ import annotations
 
-from integrations.query_embeddings import embed_query
+from dataclasses import replace
+import hashlib
+import logging
+import re
+
+from config import RERANK_CANDIDATE_LIMIT
+from integrations.query_embeddings import embed_query, rerank_query_candidates
 from repositories import knowledge_retrieval
 from retrieval.models import RetrievalSource
 from services.agent_strategy import KnowledgeOperation
 
 
-RECALL_LIMIT = 8
+VECTOR_RECALL_LIMIT = 20
+KEYWORD_RECALL_LIMIT = 20
 CONTEXT_LIMIT = 5
+DOCUMENT_CONTEXT_LIMIT = 2
+DOCUMENT_LIMIT = 3
+RRF_K = 60
+RERANK_MIN_SCORE = 0.30
+
+
+logger = logging.getLogger(__name__)
+
+
+def has_ready_knowledge(user_id: str, agent_id: str) -> bool:
+    return knowledge_retrieval.has_ready_agent_documents(user_id, agent_id)
 
 
 def retrieve_for_agent(user_id: str, agent_id: str, query: str) -> list[RetrievalSource]:
@@ -15,7 +33,69 @@ def retrieve_for_agent(user_id: str, agent_id: str, query: str) -> list[Retrieva
     if not normalized_query:
         return []
     vector = embed_query(normalized_query)
-    return knowledge_retrieval.search_agent_chunks(user_id, agent_id, vector, RECALL_LIMIT)[:CONTEXT_LIMIT]
+    vector_candidates = knowledge_retrieval.search_agent_chunks(user_id, agent_id, vector, VECTOR_RECALL_LIMIT)
+    keyword_candidates = knowledge_retrieval.search_agent_chunks_by_keywords(
+        user_id, agent_id, _extract_keywords(normalized_query), KEYWORD_RECALL_LIMIT,
+    )
+    candidates = _fuse_candidates(vector_candidates, keyword_candidates)[:RERANK_CANDIDATE_LIMIT]
+    scores = rerank_query_candidates(normalized_query, [source.content for source in candidates])
+    reranked = [replace(source, rerank_score=score) for source, score in zip(candidates, scores, strict=True)]
+    selected = _select_context_sources(reranked)
+    _record_retrieval_diagnostics(user_id, agent_id, normalized_query, reranked, selected)
+    return selected
+
+
+def _record_retrieval_diagnostics(
+    user_id: str, agent_id: str, query: str, candidates: list[RetrievalSource], selected: list[RetrievalSource],
+) -> None:
+    query_hash = hashlib.sha256(query.encode("utf-8")).hexdigest()
+    try:
+        knowledge_retrieval.record_retrieval_run(user_id, agent_id, f"sha256:{query_hash}", candidates, {source.chunk_id for source in selected})
+    except Exception:
+        logger.exception("failed to record retrieval diagnostics", extra={"agent_id": agent_id, "candidate_count": len(candidates)})
+
+
+def _extract_keywords(query: str) -> list[str]:
+    latin_tokens = re.findall(r"[A-Za-z0-9_]{2,}", query.lower())
+    chinese_sequences = re.findall(r"[\u4e00-\u9fff]{2,}", query)
+    chinese_terms = [
+        sequence[start:end]
+        for sequence in chinese_sequences
+        for start in range(len(sequence))
+        for end in range(start + 2, min(len(sequence), start + 6) + 1)
+    ]
+    ignored = {"什么", "介绍", "一下", "知识", "基本", "如何", "问题", "关于"}
+    return list(dict.fromkeys(token for token in [*latin_tokens, *chinese_terms] if token not in ignored))[:20]
+
+
+def _fuse_candidates(vector_candidates: list[RetrievalSource], keyword_candidates: list[RetrievalSource]) -> list[RetrievalSource]:
+    candidates: dict[str, RetrievalSource] = {}
+    for rank, source in enumerate(vector_candidates, start=1):
+        candidates[source.chunk_id] = replace(source, vector_rank=rank, fusion_score=1 / (RRF_K + rank))
+    for rank, source in enumerate(keyword_candidates, start=1):
+        current = candidates.get(source.chunk_id)
+        if current is None:
+            candidates[source.chunk_id] = replace(source, keyword_rank=rank, fusion_score=1 / (RRF_K + rank))
+            continue
+        candidates[source.chunk_id] = replace(
+            current, keyword_rank=rank, fusion_score=(current.fusion_score or 0) + 1 / (RRF_K + rank),
+        )
+    return sorted(candidates.values(), key=lambda source: source.fusion_score or 0, reverse=True)
+
+
+def _select_context_sources(candidates: list[RetrievalSource]) -> list[RetrievalSource]:
+    selected: list[RetrievalSource] = []
+    document_counts: dict[str, int] = {}
+    for source in sorted(candidates, key=lambda item: item.rerank_score or 0, reverse=True):
+        if (source.rerank_score or 0) < RERANK_MIN_SCORE:
+            continue
+        if len(selected) >= CONTEXT_LIMIT or len(document_counts) >= DOCUMENT_LIMIT and source.document_node_id not in document_counts:
+            continue
+        if document_counts.get(source.document_node_id, 0) >= DOCUMENT_CONTEXT_LIMIT:
+            continue
+        document_counts[source.document_node_id] = document_counts.get(source.document_node_id, 0) + 1
+        selected.append(source)
+    return selected
 
 
 def execute_knowledge_operation(
@@ -33,6 +113,14 @@ def build_catalog_answer(sources: list[RetrievalSource]) -> str:
         return "当前没有可访问且已完成索引的知识库文件。"
     lines = [f"- {source.document_name}（{_document_type(source.document_name)}）" for source in sources]
     return f"当前可访问且已完成索引的知识库文件共 {len(sources)} 份：\n" + "\n".join(lines)
+
+
+def build_no_knowledge_answer() -> str:
+    return "当前智能体资料范围内没有已完成索引的知识库文件，请先上传资料并等待索引完成。"
+
+
+def build_no_match_answer() -> str:
+    return "当前知识库中未找到足以回答该问题的相关内容。"
 
 
 def build_retrieval_context(sources: list[RetrievalSource]) -> str | None:
