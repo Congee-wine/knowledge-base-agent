@@ -10,26 +10,31 @@ from integrations.deepseek import create_chat_model
 
 
 StrategyName = Literal["direct_answer", "knowledge_answer", "hybrid_answer", "clarify"]
+KnowledgeOperation = Literal["none", "document_catalog", "semantic_search"]
 
 
 @dataclass(frozen=True)
 class RuntimeStrategy:
     name: StrategyName
     requires_private_evidence: bool
+    knowledge_operation: KnowledgeOperation = "none"
 
     @property
     def uses_knowledge(self) -> bool:
         return self.name in {"knowledge_answer", "hybrid_answer"}
 
 
-_ANALYSIS_PROMPT = """你是受控智能体的任务分析器。根据用户最新问题和有限会话历史，只返回 JSON：
-{"strategy":"direct_answer|knowledge_answer|hybrid_answer|clarify","requiresPrivateEvidence":true|false}
+_ANALYSIS_PROMPT = """你是受控智能体的任务与知识操作规划器。根据用户最新问题和有限会话历史，只返回 JSON：
+{"strategy":"direct_answer|knowledge_answer|hybrid_answer|clarify","requiresPrivateEvidence":true|false,"knowledgeOperation":"none|document_catalog|semantic_search"}
 
 选择规则：
 - 通用解释、写作、分析、建议、代码思路等不依赖用户私有资料的问题使用 direct_answer。
 - 用户明确要求依据上传文档、知识库、内部制度、合同、项目资料等私有事实时使用 knowledge_answer，并将 requiresPrivateEvidence 设为 true。
 - 私有资料可增强回答但仍需要通用分析或建议时使用 hybrid_answer。
 - 缺少会改变结果的关键目标、对象或约束时使用 clarify。
+- 用户询问当前知识库/资料范围有哪些文件、资料目录或文档清单时，选择 document_catalog；该操作只能返回真实文件元数据。
+- 用户询问文档中的具体事实、解释、总结或比较时，选择 semantic_search。
+- 不需要知识库时 knowledgeOperation 必须为 none。
 不要把“有知识库”本身当成检索理由；不要输出解释、Markdown 或模型思维过程。"""
 
 
@@ -57,7 +62,14 @@ def _parse_strategy(content: str, knowledge_available: bool) -> RuntimeStrategy:
         raise ValueError("Invalid runtime strategy")
     if not knowledge_available and name in {"knowledge_answer", "hybrid_answer"}:
         return RuntimeStrategy("clarify" if payload.get("requiresPrivateEvidence") else "direct_answer", bool(payload.get("requiresPrivateEvidence")))
-    return RuntimeStrategy(name, bool(payload.get("requiresPrivateEvidence")))
+    operation = payload.get("knowledgeOperation", "none")
+    if operation not in {"none", "document_catalog", "semantic_search"}:
+        raise ValueError("Invalid knowledge operation")
+    if name in {"knowledge_answer", "hybrid_answer"} and operation == "none":
+        raise ValueError("Knowledge strategy requires an operation")
+    if name in {"direct_answer", "clarify"}:
+        operation = "none"
+    return RuntimeStrategy(name, bool(payload.get("requiresPrivateEvidence")), operation)
 
 
 def _extract_json(content: str) -> str:
@@ -75,7 +87,7 @@ def _fallback_strategy(content: str, knowledge_available: bool) -> RuntimeStrate
     private_markers = ("知识库", "资料", "文档", "上传", "合同", "制度", "内部", "手册", "项目文件")
     requests_private_evidence = any(marker in normalized for marker in private_markers)
     if requests_private_evidence and knowledge_available:
-        return RuntimeStrategy("knowledge_answer", True)
+        return RuntimeStrategy("knowledge_answer", True, "semantic_search")
     if requests_private_evidence:
         return RuntimeStrategy("clarify", True)
     return RuntimeStrategy("direct_answer", False)

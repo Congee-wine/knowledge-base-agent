@@ -35,8 +35,8 @@ START
   → answer_public_profile（身份、能力或内部技术配置问题，直接结束）
   → load_context（普通问题）
   → analyze_request
-  → decide_strategy
-  → retrieve_context（仅资料策略）
+  → plan_knowledge_operation
+  → execute_knowledge_operation（仅资料策略）
   → evaluate_evidence（仅资料策略）
   → generate_answer
   → persist_result
@@ -46,11 +46,10 @@ START
 - `load_context`：调用会话服务，验证用户拥有会话和智能体，加载有限历史消息与智能体配置。
 - `guard_identity`：以服务端规则识别身份、能力、模型、版本和内部配置问题；命中后不调用模型、检索或工具。
 - `answer_public_profile`：仅以服务端构造的公开档案回答智能体名称、职责和真实启用能力；公开档案不包含模型、供应商、版本、密钥或内部参数。
-- `analyze_request`：基于当前问题和有限历史识别任务目标、是否依赖私有事实，以及是否缺少会改变结论的关键条件。它只能返回受 schema 约束的分类，不输出或持久化模型原始思维链。
-- `decide_strategy`：将分类映射为 `direct_answer`、`knowledge_answer`、`hybrid_answer` 或 `clarify`。无知识范围、通用写作/分析或不需要私有事实的问题直接进入普通模型回答；不以“先检索”作为默认前置条件。
-- `retrieve_context`：仅在资料策略下调用检索服务，先计算资料范围，再执行带 `owner_user_id` 与文件范围过滤的向量检索。
+- `analyze_request` / `plan_knowledge_operation`：基于当前问题和有限历史返回受 schema 约束的策略和知识操作，不输出或持久化模型原始思维链。首期操作枚举为 `document_catalog`、`semantic_search` 与 `none`。
+- `execute_knowledge_operation`：仅在资料策略下执行后端注册工具。`document_catalog` 查询文档级元数据，`semantic_search` 执行带 `owner_user_id` 与文件范围过滤的向量检索；节点不直接执行 SQL。
 - `evaluate_evidence`：根据召回结果数量、相似度与问题对私有事实的依赖性判断证据是否足够。无命中或证据不足时，若问题可由通用知识回答则降级到 `direct_answer`；只有用户明确要求依据私有资料时才生成具体的资料补充建议。
-- `generate_answer`：使用 LangChain Chat Model、策略专用 Prompt Template 和已授权上下文生成令牌事件。资料只作为受控上下文；通用回答不伪造资料来源，混合回答明确区分资料依据与通用建议。
+- `generate_answer`：使用 LangChain Chat Model、策略专用 Prompt Template 和已授权上下文生成令牌事件。资料只作为受控上下文；通用回答不伪造资料来源，混合回答明确区分资料依据与通用建议。文档目录使用工具返回的元数据直接构造，不调用模型猜测文档内容。
 - `persist_result`：调用会话服务写入助手消息、引用和完成/中断状态。
 
 工作流状态仅保存请求级数据：用户 ID、智能体 ID、会话 ID、消息 ID、短历史、策略、受控的检索引用、证据结论和生成结果。不得将完整文件、密钥或模型原始推理写入状态。SSE 仅映射白名单事件：`status`、`answer_delta`、`sources`、`message_end`、`error`；阶段文本只能描述可验证系统动作，例如“正在检索已授权资料”。

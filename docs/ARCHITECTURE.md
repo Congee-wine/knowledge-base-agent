@@ -121,6 +121,8 @@ Web API 使用 `psycopg_pool.ConnectionPool` 复用 PostgreSQL 连接，默认�
 
 `services/agent_runtime.py` 定义 LangGraph 条件工作流：`analyze_request → (retrieve_knowledge | clarify | generate_answer)`，检索后经过 `evaluate_evidence` 再路由到回答或澄清；`services/agent_strategy.py` 为分析节点提供受约束的分类。`services/retrieval.py` 与 `repositories/knowledge.py` 强制用户、智能体资料范围和就绪索引过滤。模型不会获得数据库、对象存储或任意工具访问能力，且前端只显示可验证阶段而不展示模型原始推理链。
 
+知识库请求由 `RuntimeStrategy.knowledge_operation` 指定稳定操作类型。`document_catalog` 通过 `repositories/knowledge.py` 返回每份可访问文件的真实代表分块和引用；`semantic_search` 保持 pgvector 内容召回。运行图只根据结构化操作执行注册能力，避免把用户问句硬编码为独立工作流。
+
 `services/agent_identity.py` 提供模型信息隐藏边界。LangGraph 在策略分析前执行 `guard_identity`；身份、能力和内部技术配置问题使用后端固定公开档案回复，完全绕过模型调用。普通回答也会注入不可覆盖的身份保密规则，并在服务端进行自我披露兜底检查。
 
 后续实现应将上述能力放入职责独立的模块（如 `retrieval/`、`agents/`、`workflows/` 与模型/存储 `integrations/`），避免把完整流程堆积到路由或单一服务中。

@@ -1,5 +1,39 @@
 # 开发日志
 
+## 2026-07-29：实现通用知识操作规划
+
+### 任务目标
+
+将“资料目录”与“内容语义问答”从单题关键词特判改为结构化、可扩展的知识操作规划。
+
+### 实现内容
+
+- 扩展运行策略的结构化输出，增加 `knowledgeOperation`，当前允许 `none`、`document_catalog` 与 `semantic_search`。
+- LangGraph 根据结构化操作统一进入 `execute_knowledge_operation`，而不是根据具体问句增加节点。
+- 新增受用户与智能体资料范围约束的文档级目录查询；目录回答直接列出真实文件名和类型，并为每份文件返回真实引用，不调用回答模型。
+- 语义问答继续使用分块向量检索；上下文 Prompt 明确禁止模型编造未返回的文件、分类或资料编号。
+
+### 主要文件
+
+- `backend/services/agent_strategy.py`：策略与知识操作结构化规划。
+- `backend/services/agent_runtime.py`：LangGraph 通用工具执行节点与目录回答。
+- `backend/services/retrieval.py`：知识操作执行器、目录回答和受限上下文。
+- `backend/repositories/knowledge.py`：当前资料范围内的文档级元数据查询。
+- `backend/tests/test_agent_strategy.py`、`backend/tests/test_agent_runtime.py`：规划和无模型目录回答测试。
+
+### 接口或数据变化
+
+无数据库迁移、依赖或 HTTP 路径变化；复用 SSE 状态、回答和引用事件。
+
+### 验证情况
+
+- 通过：Python 编译检查、策略/运行/身份/会话/SSE 共 23 项测试、`git diff --check`。
+- 通过：真实数据库验证，内置 AI 管家当前可访问 4 份 ready/index-ready 文档。
+
+### 遗留问题
+
+- 下一阶段可扩展 `metadata_lookup`、`document_summary` 与 `document_compare`，但必须复用该操作规划与受控工具注册机制。
+
 ## 2026-07-29：隐藏智能体底层模型信息
 
 ### 任务目标

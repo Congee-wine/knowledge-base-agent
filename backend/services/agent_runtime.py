@@ -16,7 +16,7 @@ from services.agent_identity import (
     requires_public_profile_answer,
 )
 from services.agent_strategy import RuntimeStrategy, decide_strategy
-from services.retrieval import build_retrieval_context, retrieve_for_agent
+from services.retrieval import build_catalog_answer, build_retrieval_context, execute_knowledge_operation
 
 
 class ModelMessage(TypedDict):
@@ -39,7 +39,7 @@ class AgentWorkflowState(TypedDict):
     answer: str
 
 
-RouteName = Literal["answer_public_profile", "retrieve_knowledge", "generate_answer", "clarify"]
+RouteName = Literal["answer_public_profile", "execute_knowledge_operation", "generate_answer", "clarify"]
 
 
 def stream_answer(
@@ -104,7 +104,7 @@ def _build_agent_graph():
     graph = StateGraph(AgentWorkflowState)
     graph.add_node("analyze_request", _analyze_request)
     graph.add_node("answer_public_profile", _answer_public_profile)
-    graph.add_node("retrieve_knowledge", _retrieve_knowledge)
+    graph.add_node("execute_knowledge_operation", _execute_knowledge_operation)
     graph.add_node("evaluate_evidence", _evaluate_evidence)
     graph.add_node("clarify", _clarify)
     graph.add_node("generate_answer", _generate_answer)
@@ -115,9 +115,9 @@ def _build_agent_graph():
     })
     graph.add_edge("answer_public_profile", END)
     graph.add_conditional_edges("analyze_request", _route_after_analysis, {
-        "retrieve_knowledge": "retrieve_knowledge", "generate_answer": "generate_answer", "clarify": "clarify",
+        "execute_knowledge_operation": "execute_knowledge_operation", "generate_answer": "generate_answer", "clarify": "clarify",
     })
-    graph.add_edge("retrieve_knowledge", "evaluate_evidence")
+    graph.add_edge("execute_knowledge_operation", "evaluate_evidence")
     graph.add_conditional_edges("evaluate_evidence", _route_after_evidence, {
         "generate_answer": "generate_answer", "clarify": "clarify",
     })
@@ -146,13 +146,15 @@ def _answer_public_profile(state: AgentWorkflowState) -> dict[str, str]:
 
 def _route_after_analysis(state: AgentWorkflowState) -> RouteName:
     if state["strategy"].uses_knowledge:
-        return "retrieve_knowledge"
+        return "execute_knowledge_operation"
     return "clarify" if state["strategy"].name == "clarify" else "generate_answer"
 
 
-def _retrieve_knowledge(state: AgentWorkflowState) -> dict[str, list[RetrievalSource]]:
+def _execute_knowledge_operation(state: AgentWorkflowState) -> dict[str, list[RetrievalSource]]:
     try:
-        return {"sources": retrieve_for_agent(state["user_id"], state["agent_id"], state["content"])}
+        return {"sources": execute_knowledge_operation(
+            state["strategy"].knowledge_operation, state["user_id"], state["agent_id"], state["content"],
+        )}
     except Exception:
         return {"sources": []}
 
@@ -174,6 +176,8 @@ def _clarify(state: AgentWorkflowState) -> dict[str, RuntimeStrategy]:
 
 
 def _generate_answer(state: AgentWorkflowState) -> dict[str, str]:
+    if state["strategy"].knowledge_operation == "document_catalog":
+        return {"answer": build_catalog_answer(state["sources"])}
     context = build_retrieval_context(state["sources"]) if state["strategy"].uses_knowledge else None
     answer = "".join(stream_answer(
         state["system_prompt"], state["history"], state["content"], context, state["strategy"], state["public_profile"],
@@ -193,13 +197,14 @@ def _events_for_node(node_name: str, result: dict[str, object]) -> Iterator[dict
         strategy = result["strategy"]
         if isinstance(strategy, RuntimeStrategy):
             if strategy.uses_knowledge:
-                yield {"type": "status", "stage": "retrieving", "text": "正在检索资料"}
+                text = "正在读取知识库资料目录" if strategy.knowledge_operation == "document_catalog" else "正在检索资料"
+                yield {"type": "status", "stage": "retrieving", "text": text}
             elif strategy.name == "clarify":
                 yield {"type": "status", "stage": "clarifying", "text": "正在确认关键条件"}
             else:
                 yield {"type": "status", "stage": "generating", "text": "正在生成回答"}
         return
-    if node_name == "retrieve_knowledge":
+    if node_name == "execute_knowledge_operation":
         sources = result.get("sources", [])
         if isinstance(sources, list) and sources:
             citations = [source.to_citation() for source in sources if isinstance(source, RetrievalSource)]
