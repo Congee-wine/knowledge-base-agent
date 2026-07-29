@@ -1,5 +1,5 @@
 import { Bubble } from '@ant-design/x'
-import { ArrowDownOutlined, CopyOutlined } from '@ant-design/icons'
+import { ArrowDownOutlined, CopyOutlined, DownOutlined, UpOutlined } from '@ant-design/icons'
 import { Button, message, Tooltip } from 'antd'
 import { XMarkdown } from '@ant-design/x-markdown'
 import { useLayoutEffect, useRef, useState } from 'react'
@@ -36,15 +36,36 @@ function getRunSteps(message: ChatMessage, statusText: string | null | undefined
 }
 
 function CitationList({ message }: { message: ChatMessage }) {
-  if (message.role !== 'assistant' || !message.citations?.length) return null
-  return <div className="mt-3 border-t border-slate-100 pt-2 text-xs text-slate-500">
-    {message.citations.map(citation => <div key={`${citation.documentNodeId}-${citation.location ?? ''}`} className="mb-2">
-      <Link className="font-medium text-blue-600" to={`/app/knowledge/files/${citation.documentNodeId}/preview`}>
-        {citation.documentName}{citation.location ? ` · ${citation.location}` : ''}
-      </Link>
-      <p className="m-0 mt-1 line-clamp-2">{citation.snippet}</p>
-    </div>)}
-  </div>
+  if (message.role !== 'assistant' || message.generationStatus !== 'complete' || !message.citations?.length) return null
+
+  const citations = message.citations.filter((citation, index, all) =>
+    all.findIndex(item => item.documentNodeId === citation.documentNodeId) === index,
+  )
+
+  return (
+    <details className="chat-citations" open>
+      <summary>
+        <span>{`引用${citations.length}篇资料作为参考`}</span>
+        <span className="chat-citations__toggle" aria-hidden="true">
+          <UpOutlined className="is-expanded" />
+          <DownOutlined className="is-collapsed" />
+        </span>
+      </summary>
+      <div className="chat-citations__list">
+        {citations.map((citation, index) => (
+          <Link
+            aria-label={citation.documentName}
+            className="chat-citations__item"
+            key={citation.documentNodeId}
+            to={`/app/knowledge/files/${citation.documentNodeId}/preview`}
+          >
+            <span className="chat-citations__index">{index + 1}</span>
+            <span className="chat-citations__name">{citation.documentName}</span>
+          </Link>
+        ))}
+      </div>
+    </details>
+  )
 }
 
 export function ChatMessageList({
