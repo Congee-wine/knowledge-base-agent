@@ -1,5 +1,41 @@
 # 开发日志
 
+## 2026-07-29：恢复 AI 回答的增量流式输出
+
+### 任务目标
+
+修复聊天界面在模型生成结束后一次性出现完整回答，而不是逐段显示的问题。
+
+### 实现内容
+
+- 将运行时模型调用从同步 `.invoke()` 改为遍历 `.stream()` 返回的内容块。
+- 将每个非空模型内容块继续作为独立 `answer_delta` 事件发送至现有 SSE 链路。
+- 新增回归测试，验证运行时逐块产出并且不会调用 `.invoke()`。
+
+### 主要文件
+
+- `backend/services/agent_runtime.py`：智能体模型调用与 SSE 事件生成。
+- `backend/tests/test_agent_runtime.py`：模型增量块转发回归测试。
+
+### 技术方案
+
+保持既有 SSE 协议与前端增量渲染逻辑不变，只在模型适配调用边界改为消费 LangChain 的流式迭代器，避免等待完整模型响应后再生成单个增量事件。
+
+### 接口或数据变化
+
+无。未新增依赖、接口、数据库变更或迁移。
+
+### 验证情况
+
+- 通过：`python -m unittest tests.test_agent_runtime tests.test_conversations_service tests.test_streaming_protocol`（17 项）。
+- 通过：`python -m py_compile services/agent_runtime.py`。
+- 通过：`git diff --check`。
+- 未执行：浏览器端真实模型流式输出复测。
+
+### 遗留问题
+
+- 需在浏览器中发送新消息，确认网络环境和模型服务实际按块返回时页面逐段更新。
+
 ## 2026-07-29：修复知识库文件删除的 embedding 任务外键冲突
 
 ### 任务目标

@@ -60,12 +60,12 @@ def stream_answer(
     messages.extend(_history_messages(history[-10:]))
     messages.append(HumanMessage(content=content))
     try:
-        response = create_chat_model().invoke(messages)
+        for response_chunk in create_chat_model().stream(messages):
+            text = _message_text(response_chunk.content)
+            if text:
+                yield text
     except Exception as error:
         raise DeepSeekError("DeepSeek response is unavailable") from error
-    text = _message_text(response.content)
-    if text:
-        yield text
 
 
 def stream_with_retrieval(

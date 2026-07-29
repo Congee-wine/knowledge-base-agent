@@ -1,12 +1,26 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
-from services.agent_runtime import stream_with_retrieval
+from langchain_core.messages import AIMessageChunk
+
+from services.agent_runtime import stream_answer, stream_with_retrieval
 from retrieval.models import RetrievalSource
 from services.agent_strategy import RuntimeStrategy
 
 
 class AgentRuntimeTests(unittest.TestCase):
+    @patch("services.agent_runtime.create_chat_model")
+    def test_stream_answer_yields_each_model_chunk(self, create_chat_model: MagicMock) -> None:
+        model = MagicMock()
+        model.stream.return_value = [AIMessageChunk(content="第一段"), AIMessageChunk(content="第二段")]
+        create_chat_model.return_value = model
+
+        chunks = list(stream_answer(None, [], "请分段回答"))
+
+        self.assertEqual(chunks, ["第一段", "第二段"])
+        model.stream.assert_called_once()
+        model.invoke.assert_not_called()
+
     @patch("services.agent_runtime.decide_strategy")
     @patch("services.agent_runtime.stream_answer")
     def test_model_question_uses_fixed_profile_without_calling_model(self, stream_answer: object, decide_strategy: object) -> None:
