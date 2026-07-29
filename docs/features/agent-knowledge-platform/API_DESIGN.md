@@ -137,10 +137,10 @@
 
 | 事件 | 数据 | 用途 |
 | --- | --- | --- |
-| `status` | `{ "phase": "retrieving" }` | 展示处理阶段 |
-| `token` | `{ "text": "..." }` | 追加助手回答 |
-| `citation` | `{ "fileId": "...", "fileName": "...", "page": 3, "excerpt": "..." }` | 展示引用 |
-| `complete` | `{ "messageId": "..." }` | 刷新会话与消息 |
+| `status` | `{ "stage": "analyzing" \| "retrieving" \| "context" \| "generating", "text": "..." }` | 展示可验证的运行阶段，不返回模型原始思维链 |
+| `answer_delta` | `{ "content": "..." }` | 追加助手回答 |
+| `sources` | `{ "items": [...] }` | 在实际使用资料时提供引用 |
+| `message_end` | `{ "messageId": "...", "generationStatus": "complete" }` | 刷新会话与消息 |
 | `error` | `{ "code": "MODEL_UNAVAILABLE", "message": "回答生成失败，请重试" }` | 显示可理解错误 |
 
 消息为空返回 `VALIDATION_ERROR`；会话不存在/无权访问返回 `RESOURCE_NOT_FOUND`；同一会话存在生成中的消息时返回 `CONVERSATION_BUSY`。

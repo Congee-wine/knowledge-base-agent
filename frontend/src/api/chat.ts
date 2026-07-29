@@ -9,6 +9,8 @@ type StreamEventBase = {
   sequence: number
 }
 
+type ChatRunStage = 'analyzing' | 'clarifying' | 'retrieving' | 'no_match' | 'retrieval_failed' | 'context' | 'generating'
+
 export type ChatStreamEvent =
   | ({
       type: 'message_start'
@@ -18,7 +20,7 @@ export type ChatStreamEvent =
       assistantMessageId: string
     } & Omit<StreamEventBase, 'mode'>)
   | ({ type: 'message_start'; mode: 'preview' } & Omit<StreamEventBase, 'mode'>)
-  | (StreamEventBase & { type: 'status'; stage: 'retrieving' | 'no_match' | 'retrieval_failed' | 'context' | 'generating'; text: string })
+  | (StreamEventBase & { type: 'status'; stage: ChatRunStage; text: string })
   | (StreamEventBase & { type: 'sources'; items: ChatCitation[] })
   | (StreamEventBase & { type: 'answer_delta'; content: string })
   | ({ type: 'message_end'; mode: 'conversation'; messageId: string; generationStatus: 'complete' | 'interrupted' } & Omit<StreamEventBase, 'mode'>)
@@ -84,8 +86,8 @@ function readEvent(payload: unknown): ChatStreamEvent {
     }
   }
   if (type === 'status') {
-    if (!['retrieving', 'no_match', 'retrieval_failed', 'context', 'generating'].includes(String(event.stage))) throw new Error('流式状态阶段无效')
-    return { type, mode, requestId, sequence, stage: event.stage as 'retrieving' | 'no_match' | 'retrieval_failed' | 'context' | 'generating', text: readRequiredString(event, 'text') }
+    if (!['analyzing', 'clarifying', 'retrieving', 'no_match', 'retrieval_failed', 'context', 'generating'].includes(String(event.stage))) throw new Error('流式状态阶段无效')
+    return { type, mode, requestId, sequence, stage: event.stage as ChatRunStage, text: readRequiredString(event, 'text') }
   }
   if (type === 'sources') {
     if (!Array.isArray(event.items)) throw new Error('引用事件格式无效')

@@ -1,5 +1,72 @@
 # 开发日志
 
+## 2026-07-29：修复 LangGraph 流式阶段协议与本地后端连接
+
+### 任务目标
+
+修复 LangGraph 新阶段被前端拒绝，以及浏览器无法连接本地 API 的问题。
+
+### 实现内容
+
+- 前端 SSE 事件类型和运行时校验新增 `analyzing`、`clarifying` 两个受控阶段。
+- 新增解析回归测试，确保新阶段能够正常进入聊天运行状态。
+- 确认截图中的 `ERR_CONNECTION_REFUSED` 原因是本地端口 8000 未监听；启动 FastAPI 后健康检查恢复正常。
+
+### 主要文件
+
+- `frontend/src/api/chat.ts`：流式状态联合类型与校验白名单。
+- `frontend/src/api/__tests__/chat.test.ts`：LangGraph 阶段解析回归测试。
+
+### 接口或数据变化
+
+无数据库或 HTTP 路径变化；扩展既有 SSE `status.stage` 可接受值。
+
+### 验证情况
+
+- 通过：`pnpm test -- --run src/api/__tests__/chat.test.ts`（4 项）、`pnpm exec tsc --noEmit`、`GET /api/health`。
+
+### 遗留问题
+
+- 浏览器仍需重新发送一条消息，确认真实模型链路返回的阶段和回答均正常显示。
+
+## 2026-07-29：确认受控智能体运行策略
+
+### 任务目标
+
+将智能体从固定检索聊天调整为能理解问题、选择有限策略并在知识库证据不足时正确降级的真实可用运行能力。
+
+### 实现内容
+
+- 用户确认智能体必须根据问题与上下文选择直接回答、资料回答、混合回答或澄清提问。
+- 更新既有智能体功能需求、后端工作流和 SSE 契约设计；明确知识库无结果是工具执行结果，不能替代最终回答。
+- 保持服务端策略、权限和数据边界；不引入模型任意工具调用或展示原始思维链。
+- 新增 `agent_strategy`，使用受约束的模型分类并在分类服务不可用时采用保守回退；运行时只在策略要求时检索资料，无命中时分别降级为普通回答或资料补充澄清。
+- 将策略分析、检索、证据评估、澄清和回答生成迁移为 LangGraph 节点及条件边；会话服务不再承担运行路径编排。
+
+### 主要文件
+
+- `docs/features/agent-knowledge-platform/REQUIREMENTS.md`：记录新的运行行为与降级规则。
+- `docs/features/agent-knowledge-platform/BACKEND_DESIGN.md`：定义条件工作流与证据评估职责。
+- `docs/features/agent-knowledge-platform/API_DESIGN.md`：同步受控 SSE 阶段事件。
+- `docs/QUESTIONS.md`：记录用户确认的长期运行规则。
+- `backend/services/agent_strategy.py`：问题策略分析、结果校验和保守回退。
+- `backend/services/agent_runtime.py`：策略驱动的检索、降级和回答上下文构造。
+- `backend/services/agent_runtime.py`：LangGraph 条件图、节点实现和 SSE 事件映射。
+- `backend/tests/test_agent_strategy.py`：策略分类与回退规则测试。
+
+### 接口或数据变化
+
+本次不修改数据库；SSE 继续使用既有 `status`、`answer_delta`、`sources` 与 `message_end` 事件，新增 `analyzing`、`clarifying` 阶段语义。
+
+### 验证情况
+
+- 通过：`python -m py_compile services/agent_strategy.py services/agent_runtime.py`、`python -m unittest tests.test_conversations_service tests.test_agent_strategy tests.test_agent_runtime tests.test_streaming_protocol`（17 项）、`git diff --check`。
+- 未通过：完整 `unittest discover` 在既有 `test_document_worker_tasks` 中因当前 Python 环境缺少 `fitz`（PyMuPDF）失败；其余 65 项已执行，运行策略无新增失败。
+
+### 遗留问题
+
+- 需要补充真实模型对话、低相关性证据评估和真实知识库检索的端到端验证。
+
 ## 2026-07-28：阶段 4 embedding 基础设施与混合切分
 
 ### 任务目标

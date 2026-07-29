@@ -54,18 +54,16 @@ class StreamingProtocolTests(unittest.TestCase):
             agent_preview.stream_preview("user-1", "agent-1", request)
 
     @patch("services.conversations.conversation_repository.complete_stream_generation")
-    @patch("services.conversations.stream_answer", return_value=iter(["answer"]))
-    @patch("services.conversations.retrieve_for_agent", return_value=[])
+    @patch("services.conversations.stream_with_retrieval", return_value=iter([{"type": "answer_delta", "content": "answer"}]))
     @patch("services.conversations.conversation_repository.list_valid_history")
     @patch("services.conversations.conversation_repository.start_stream_generation")
-    @patch("services.conversations._ensure_active_agent", return_value=SimpleNamespace(system_prompt="prompt"))
+    @patch("services.conversations._ensure_active_agent", return_value=SimpleNamespace(kind="personal", system_prompt="prompt"))
     def test_conversation_runtime_uses_only_valid_history(
         self,
         _: object,
         start_generation: object,
         list_history: object,
-        retrieve_for_agent: object,
-        stream_answer: object,
+        stream_with_retrieval: object,
         complete_generation: object,
     ) -> None:
         conversation = {"id": "conversation-1"}
@@ -77,7 +75,9 @@ class StreamingProtocolTests(unittest.TestCase):
         events = list(conversation_service.stream_message("user-1", "agent-1", "conversation-1", "new question", "request-1"))
 
         list_history.assert_called_once_with("conversation-1", 7, 10)
-        stream_answer.assert_called_once_with("prompt", [{"role": "user", "content": "previous question"}], "new question", None)
+        stream_with_retrieval.assert_called_once_with(
+            "user-1", "agent-1", "personal", "prompt", [{"role": "user", "content": "previous question"}], "new question", False,
+        )
         complete_generation.assert_called_once_with("assistant-1", "answer", [])
         self.assertEqual(events[-1]["type"], "message_end")
 

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
 
 from integrations.deepseek import DeepSeekError, create_chat_model
+from retrieval.models import RetrievalSource
+from services.agent_strategy import RuntimeStrategy, decide_strategy
 from services.retrieval import build_retrieval_context, retrieve_for_agent
 
 
@@ -15,77 +17,166 @@ class ModelMessage(TypedDict):
     content: str
 
 
-class RuntimeState(TypedDict):
-    content: str
-    history: list[ModelMessage]
-    messages: list[BaseMessage]
+class AgentWorkflowState(TypedDict):
+    user_id: str
+    agent_id: str
+    agent_kind: str
     system_prompt: str | None
-    retrieval_context: str | None
+    history: list[ModelMessage]
+    content: str
+    knowledge_available: bool
+    strategy: RuntimeStrategy
+    sources: list[RetrievalSource]
+    answer: str
+
+
+RouteName = Literal["retrieve_knowledge", "generate_answer", "clarify"]
 
 
 def stream_answer(
-    system_prompt: str | None, history: list[ModelMessage], content: str, retrieval_context: str | None = None,
+    system_prompt: str | None,
+    history: list[ModelMessage],
+    content: str,
+    retrieval_context: str | None = None,
+    strategy: RuntimeStrategy | None = None,
 ) -> Iterator[str]:
-    graph = _build_runtime_graph()
+    messages: list[BaseMessage] = []
+    if system_prompt and system_prompt.strip():
+        messages.append(SystemMessage(content=system_prompt.strip()))
+    if retrieval_context:
+        messages.append(SystemMessage(content=retrieval_context))
+    messages.append(SystemMessage(content=_response_policy((strategy or RuntimeStrategy("direct_answer", False)).name)))
+    messages.extend(_history_messages(history[-10:]))
+    messages.append(HumanMessage(content=content))
     try:
-        for message, metadata in graph.stream(
-            {"content": content, "history": history, "messages": [], "system_prompt": system_prompt, "retrieval_context": retrieval_context},
-            stream_mode="messages",
-        ):
-            if metadata.get("langgraph_node") != "model":
-                continue
-            if isinstance(message, (AIMessage, AIMessageChunk)):
-                text = _message_text(message.content)
-                if text:
-                    yield text
-    except Exception as error:  # LangChain provider errors have multiple concrete types.
+        response = create_chat_model().invoke(messages)
+    except Exception as error:
         raise DeepSeekError("DeepSeek response is unavailable") from error
+    text = _message_text(response.content)
+    if text:
+        yield text
 
 
-def stream_with_retrieval(user_id: str, agent_id: str, agent_kind: str, system_prompt: str | None, history: list[ModelMessage], content: str, use_knowledge_base: bool) -> Iterator[dict[str, object]]:
-    enabled = agent_kind == "personal" or use_knowledge_base
-    sources = []
-    if enabled:
-        yield {"type": "status", "stage": "retrieving", "text": "正在检索资料"}
-        try:
-            sources = retrieve_for_agent(user_id, agent_id, content)
-        except Exception:
-            yield {"type": "status", "stage": "retrieval_failed", "text": "资料检索失败，已降级为普通回答"}
-        citations = [source.to_citation() for source in sources]
-        if citations:
-            yield {"type": "status", "stage": "context", "text": f"已命中 {len(citations)} 条资料，正在构造上下文"}
-            yield {"type": "sources", "items": citations}
-        elif sources == []:
-            yield {"type": "status", "stage": "no_match", "text": "未命中已启用的知识库资料"}
-    yield {"type": "status", "stage": "generating", "text": "正在生成回答"}
-    for delta in stream_answer(system_prompt, history, content, build_retrieval_context(sources)):
-        yield {"type": "answer_delta", "content": delta}
+def stream_with_retrieval(
+    user_id: str,
+    agent_id: str,
+    agent_kind: str,
+    system_prompt: str | None,
+    history: list[ModelMessage],
+    content: str,
+    use_knowledge_base: bool,
+) -> Iterator[dict[str, object]]:
+    initial_state: AgentWorkflowState = {
+        "user_id": user_id,
+        "agent_id": agent_id,
+        "agent_kind": agent_kind,
+        "system_prompt": system_prompt,
+        "history": history,
+        "content": content,
+        "knowledge_available": agent_kind == "personal" or use_knowledge_base,
+        "strategy": RuntimeStrategy("direct_answer", False),
+        "sources": [],
+        "answer": "",
+    }
+    yield {"type": "status", "stage": "analyzing", "text": "正在分析问题"}
+    for update in _build_agent_graph().stream(initial_state, stream_mode="updates"):
+        for node_name, result in update.items():
+            yield from _events_for_node(node_name, result)
 
 
-def _build_runtime_graph():
-    graph = StateGraph(RuntimeState)
-    graph.add_node("prepare_input", _prepare_input)
-    graph.add_node("model", _run_model)
-    graph.add_edge(START, "prepare_input")
-    graph.add_edge("prepare_input", "model")
-    graph.add_edge("model", END)
+def _build_agent_graph():
+    graph = StateGraph(AgentWorkflowState)
+    graph.add_node("analyze_request", _analyze_request)
+    graph.add_node("retrieve_knowledge", _retrieve_knowledge)
+    graph.add_node("evaluate_evidence", _evaluate_evidence)
+    graph.add_node("clarify", _clarify)
+    graph.add_node("generate_answer", _generate_answer)
+    graph.add_edge(START, "analyze_request")
+    graph.add_conditional_edges("analyze_request", _route_after_analysis, {
+        "retrieve_knowledge": "retrieve_knowledge", "generate_answer": "generate_answer", "clarify": "clarify",
+    })
+    graph.add_edge("retrieve_knowledge", "evaluate_evidence")
+    graph.add_conditional_edges("evaluate_evidence", _route_after_evidence, {
+        "generate_answer": "generate_answer", "clarify": "clarify",
+    })
+    graph.add_edge("clarify", "generate_answer")
+    graph.add_edge("generate_answer", END)
     return graph.compile()
 
 
-def _prepare_input(state: RuntimeState) -> dict[str, list[BaseMessage]]:
-    messages: list[BaseMessage] = []
-    if state["system_prompt"] and state["system_prompt"].strip():
-        messages.append(SystemMessage(content=state["system_prompt"].strip()))
-    if state["retrieval_context"]:
-        messages.append(SystemMessage(content=state["retrieval_context"]))
-    messages.extend(_history_messages(state["history"][-10:]))
-    messages.append(HumanMessage(content=state["content"]))
-    return {"messages": messages}
+def _analyze_request(state: AgentWorkflowState) -> dict[str, RuntimeStrategy]:
+    return {"strategy": decide_strategy(state["content"], state["history"], state["knowledge_available"])}
 
 
-def _run_model(state: RuntimeState) -> dict[str, list[BaseMessage]]:
-    response = create_chat_model().invoke(state["messages"])
-    return {"messages": [response]}
+def _route_after_analysis(state: AgentWorkflowState) -> RouteName:
+    if state["strategy"].uses_knowledge:
+        return "retrieve_knowledge"
+    return "clarify" if state["strategy"].name == "clarify" else "generate_answer"
+
+
+def _retrieve_knowledge(state: AgentWorkflowState) -> dict[str, list[RetrievalSource]]:
+    try:
+        return {"sources": retrieve_for_agent(state["user_id"], state["agent_id"], state["content"])}
+    except Exception:
+        return {"sources": []}
+
+
+def _evaluate_evidence(state: AgentWorkflowState) -> dict[str, RuntimeStrategy]:
+    if state["sources"]:
+        return {"strategy": state["strategy"]}
+    if state["strategy"].requires_private_evidence:
+        return {"strategy": RuntimeStrategy("clarify", True)}
+    return {"strategy": RuntimeStrategy("direct_answer", False)}
+
+
+def _route_after_evidence(state: AgentWorkflowState) -> Literal["generate_answer", "clarify"]:
+    return "clarify" if state["strategy"].name == "clarify" else "generate_answer"
+
+
+def _clarify(state: AgentWorkflowState) -> dict[str, RuntimeStrategy]:
+    return {"strategy": RuntimeStrategy("clarify", state["strategy"].requires_private_evidence)}
+
+
+def _generate_answer(state: AgentWorkflowState) -> dict[str, str]:
+    context = build_retrieval_context(state["sources"]) if state["strategy"].uses_knowledge else None
+    return {"answer": "".join(stream_answer(state["system_prompt"], state["history"], state["content"], context, state["strategy"]))}
+
+
+def _events_for_node(node_name: str, result: dict[str, object]) -> Iterator[dict[str, object]]:
+    if node_name == "analyze_request":
+        strategy = result["strategy"]
+        if isinstance(strategy, RuntimeStrategy):
+            if strategy.uses_knowledge:
+                yield {"type": "status", "stage": "retrieving", "text": "正在检索资料"}
+            elif strategy.name == "clarify":
+                yield {"type": "status", "stage": "clarifying", "text": "正在确认关键条件"}
+            else:
+                yield {"type": "status", "stage": "generating", "text": "正在生成回答"}
+        return
+    if node_name == "retrieve_knowledge":
+        sources = result.get("sources", [])
+        if isinstance(sources, list) and sources:
+            citations = [source.to_citation() for source in sources if isinstance(source, RetrievalSource)]
+            yield {"type": "status", "stage": "context", "text": f"已命中 {len(citations)} 条资料，正在构造上下文"}
+            yield {"type": "sources", "items": citations}
+        else:
+            yield {"type": "status", "stage": "no_match", "text": "未命中已启用的知识库资料"}
+        return
+    if node_name == "evaluate_evidence":
+        strategy = result["strategy"]
+        if isinstance(strategy, RuntimeStrategy):
+            if strategy.name == "clarify":
+                yield {"type": "status", "stage": "clarifying", "text": "需要补充相关资料或具体范围"}
+            else:
+                yield {"type": "status", "stage": "generating", "text": "正在生成回答"}
+        return
+    if node_name == "clarify":
+        yield {"type": "status", "stage": "generating", "text": "正在生成回答"}
+        return
+    if node_name == "generate_answer":
+        answer = result.get("answer")
+        if isinstance(answer, str) and answer:
+            yield {"type": "answer_delta", "content": answer}
 
 
 def _history_messages(history: list[ModelMessage]) -> list[BaseMessage]:
@@ -96,3 +187,13 @@ def _message_text(content: str | list[str | dict[str, object]]) -> str:
     if isinstance(content, str):
         return content
     return "".join(item for item in content if isinstance(item, str))
+
+
+def _response_policy(strategy: str) -> str:
+    if strategy == "clarify":
+        return "当前问题缺少会影响结论的关键信息，先用一句简洁问题向用户确认；不要假装已掌握私有资料。"
+    if strategy == "knowledge_answer":
+        return "仅将提供的资料作为私有事实依据。资料未说明的内容要明确说明，不能伪造来源或引用。"
+    if strategy == "hybrid_answer":
+        return "优先依据提供资料回答；允许补充通用分析，但必须清晰区分资料事实与通用建议，不能伪造来源。"
+    return "直接解决用户问题。除非用户明确要求私有资料依据，否则不要声称检索过资料或要求用户更换问题。"

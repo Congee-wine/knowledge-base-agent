@@ -40,9 +40,8 @@ class ConversationsServiceTests(unittest.TestCase):
         self.assertEqual(result.user_message.content, "你好")
         self.assertEqual(result.assistant_message.content, "已收到你的消息：你好")
 
-    @patch("services.conversations.retrieve_for_agent", return_value=[])
-    @patch("services.conversations.stream_answer")
-    def test_completed_duplicate_request_does_not_call_model(self, mock_stream: object, _: object) -> None:
+    @patch("services.conversations.stream_with_retrieval", return_value=iter([{"type": "answer_delta", "content": "回答"}]))
+    def test_completed_duplicate_request_does_not_call_model(self, _: object) -> None:
         request_id = uuid.uuid4().hex
         events = list(service.stream_message(
             str(self.user_id), self.agent_id, None, "第一次", request_id
@@ -58,8 +57,8 @@ class ConversationsServiceTests(unittest.TestCase):
         self.assertIn("message_end", types)
         self.assertNotIn("error", types)
 
-    @patch("services.conversations.stream_answer", side_effect=Exception("should not be called"))
-    def test_generating_duplicate_returns_error(self, mock_stream: object) -> None:
+    @patch("services.conversations.stream_with_retrieval", side_effect=Exception("should not be called"))
+    def test_generating_duplicate_returns_error(self, _: object) -> None:
         request_id = uuid.uuid4().hex
         repo.start_stream_generation(
             str(self.user_id), self.agent_id, None, "进行中", request_id
@@ -95,8 +94,8 @@ class ConversationsServiceTests(unittest.TestCase):
         self.assertEqual(detail.messages[-1].generation_status, "generating")
         repo.interrupt_stream_generation(str(assistant_message["id"]), "")
 
-    @patch("services.conversations.stream_answer")
-    def test_failed_request_returns_retryable_error(self, mock_stream: object) -> None:
+    @patch("services.conversations.stream_with_retrieval")
+    def test_failed_request_returns_retryable_error(self, _: object) -> None:
         request_id = uuid.uuid4().hex
         result = repo.start_stream_generation(
             str(self.user_id), self.agent_id, None, "失败测试", request_id

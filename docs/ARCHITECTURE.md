@@ -6,7 +6,7 @@
 
 ## 总体说明
 
-当前项目是前后端分离的 Web 应用。`frontend/` 提供 React 单页应用，`backend/` 提供 FastAPI API。已实现的核心业务是基于邮箱密码的认证和受保护的聊天接口骨架；知识库、向量检索和智能体回答尚未实现。
+当前项目是前后端分离的 Web 应用。`frontend/` 提供 React 单页应用，`backend/` 提供 FastAPI API。认证、智能体、会话、直接 SSE 聊天、资料树、异步文本解析和知识库检索基础均已实现；智能体运行层正在从固定检索流程升级为由服务端策略节点约束的回答、检索、混合回答和澄清工作流。
 
 ```text
 浏览器（React + Vite）
@@ -55,7 +55,7 @@
 - `docker-compose.infrastructure.yml`：本地 Redis、MinIO 及持久化数据卷的启动配置。
 - `dependencies.py`：HTTP Bearer 认证依赖和当前用户解析。
 - `routers/auth.py`：认证 HTTP 路由、请求绑定和响应状态。
-- `routers/chat.py`：认证保护的聊天路由；尚未连接模型或检索服务。
+- `routers/chat.py`：保留认证保护的旧聊天回显路由；正式智能体聊天由 `routers/conversations.py` 的 SSE 路由承载。
 - `schemas/`：Pydantic 请求/响应模型。
 - `services/auth.py`：密码哈希、JWT 签发/校验、会话轮换与撤销业务规则。
 - `tests/test_auth_integration.py`：认证 API 到 PostgreSQL 的集成测试；使用唯一测试用户并在每个用例结束后清理测试数据。
@@ -119,7 +119,7 @@ Web API 使用 `psycopg_pool.ConnectionPool` 复用 PostgreSQL 连接，默认�
 
 智能体与会话的持久化基础已实现：`routers/agents.py`、`routers/conversations.py` 处理鉴权和 HTTP 契约；`services/agents.py`、`services/conversations.py` 执行业务规则；`repositories/` 集中 PostgreSQL 查询。`agents`、`user_preferences`、`agent_preset_questions`、`conversations`、`messages` 由迁移 `20260723_0002` 创建，内置 AI 管家为固定 UUID 的种子记录。
 
-文档加载、解析、切分、Embedding、向量存储读写、检索、重排、Prompt 管理、模型适配、工具调用或工作流状态定义仍未实现。虽然数据库初始化启用了 pgvector，但这不构成已实现的 RAG 流程。
+`services/agent_runtime.py` 定义 LangGraph 条件工作流：`analyze_request → (retrieve_knowledge | clarify | generate_answer)`，检索后经过 `evaluate_evidence` 再路由到回答或澄清；`services/agent_strategy.py` 为分析节点提供受约束的分类。`services/retrieval.py` 与 `repositories/knowledge.py` 强制用户、智能体资料范围和就绪索引过滤。模型不会获得数据库、对象存储或任意工具访问能力，且前端只显示可验证阶段而不展示模型原始推理链。
 
 后续实现应将上述能力放入职责独立的模块（如 `retrieval/`、`agents/`、`workflows/` 与模型/存储 `integrations/`），避免把完整流程堆积到路由或单一服务中。
 

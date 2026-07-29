@@ -61,4 +61,18 @@ describe('streamChat', () => {
 
     expect(received).toEqual(events)
   })
+
+  it('accepts LangGraph analysis and clarification stages', async () => {
+    localStorage.setItem('access_token', 'test-token')
+    const events: ChatStreamEvent[] = [
+      { type: 'status', mode: 'conversation', requestId: 'request-1', sequence: 1, stage: 'analyzing', text: '正在分析问题' },
+      { type: 'status', mode: 'conversation', requestId: 'request-1', sequence: 2, stage: 'clarifying', text: '正在确认关键条件' },
+    ]
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(events.map(sseFrame).join(''), { status: 200 })))
+    const received: ChatStreamEvent[] = []
+
+    await streamChat({ body: { content: 'hello' }, onEvent: item => received.push(item), path: '/stream' })
+
+    expect(received).toEqual(events)
+  })
 })
