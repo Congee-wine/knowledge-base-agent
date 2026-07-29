@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Button, message } from 'antd'
-import { DatabaseOutlined, GlobalOutlined, PaperClipOutlined, RobotOutlined } from '@ant-design/icons'
+import { DatabaseOutlined, GlobalOutlined, PaperClipOutlined } from '@ant-design/icons'
 import { Sender } from '@ant-design/x'
 import type { ChatAgent } from '../../../types/chat'
 
@@ -34,7 +34,6 @@ export function ChatComposerSurface({ agent, value, sending, onChange, onStop, o
         <div className="flex items-center justify-between gap-4 pt-1">
           <div className="flex flex-wrap items-center gap-2">
             {isBuiltin && <Button icon={<DatabaseOutlined />} size="small" type={useKnowledgeBase ? 'primary' : 'default'} onClick={() => setUseKnowledgeBase(enabled => !enabled)}>全部资料</Button>}
-            <Button icon={<RobotOutlined />} size="small" onClick={notifyUnsupported}>Agent</Button>
             {(isBuiltin || agent.allowNetworkAccess) && <Button aria-label="联网" icon={<GlobalOutlined />} size="small" onClick={notifyUnsupported} />}
             {(isBuiltin || agent.allowConversationUpload) && <Button aria-label="上传文件" icon={<PaperClipOutlined />} size="small" onClick={notifyUnsupported} />}
           </div>

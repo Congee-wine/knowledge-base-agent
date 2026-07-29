@@ -5,7 +5,6 @@ import type { ChatMessage } from '../../../../types/chat'
 import { ChatMessageList } from '../ChatMessageList'
 
 const bubbleListSpy = vi.fn()
-const thoughtChainSpy = vi.fn()
 const scrollToBeforeReady = vi.fn(() => {
   throw new Error('scroll box is not ready')
 })
@@ -17,10 +16,6 @@ vi.mock('@ant-design/x', () => ({
       bubbleListSpy(props)
       return <div data-testid="bubble-list">{props.items.map((item, index) => <div key={index}>{item.content}</div>)}</div>
     }),
-  },
-  ThoughtChain: ({ items }: { items: Array<{ title: string; blink?: boolean; status?: string }> }) => {
-    thoughtChainSpy(items)
-    return <div data-testid="thought-chain">{items.map(item => item.title).join(' ')}</div>
   },
 }))
 
@@ -55,7 +50,6 @@ describe('ChatMessageList', () => {
   it('places the active run summary inside the generating assistant message', () => {
     render(<ChatMessageList messages={[{ ...message(), role: 'assistant', content: '', generationStatus: 'generating' }]} pendingAssistant statusText="正在生成回答" />)
 
-    expect(screen.getByTestId('thought-chain')).toHaveTextContent('正在生成回答')
-    expect(thoughtChainSpy).toHaveBeenLastCalledWith([expect.objectContaining({ blink: true, status: undefined })])
+    expect(screen.getByLabelText('回答运行过程')).toHaveTextContent('正在生成回答')
   })
 })

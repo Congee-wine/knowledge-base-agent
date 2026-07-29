@@ -12,11 +12,14 @@ export function mergeMessages(
   }
 
   for (const message of localMessages) {
+    const existingMessage = messages.get(message.id)
     const shouldOverrideServer =
       message.role === 'assistant' && localAssistantPriorityIds.has(message.id)
 
-    if (!messages.has(message.id) || shouldOverrideServer) {
+    if (!existingMessage || shouldOverrideServer) {
       messages.set(message.id, message)
+    } else if (message.role === 'assistant' && message.runSteps?.length) {
+      messages.set(message.id, { ...existingMessage, runSteps: message.runSteps })
     }
   }
 

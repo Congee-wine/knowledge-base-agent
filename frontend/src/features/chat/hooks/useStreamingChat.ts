@@ -135,7 +135,7 @@ export function useStreamingChat() {
           ...current.streams,
           [key]: {
             ...stream,
-            messages: stream.messages.filter(message => message.id !== pair.userMessageId && message.id !== pair.assistantMessageId),
+            messages: stream.messages.filter(message => message.id !== pair.userMessageId && (message.id !== pair.assistantMessageId || Boolean(message.runSteps?.length))),
             pendingPersistedPairs: stream.pendingPersistedPairs.filter(item => item.requestId !== requestId),
           },
         },
@@ -240,7 +240,12 @@ function applyEvent(current: ConversationStream, event: ChatStreamEvent, active:
   }
   if (event.type === 'answer_delta') return { ...current, messages: updateAssistant(current.messages, active.assistantMessageId, active.requestId, message => ({ ...message, content: message.content + event.content })) }
   if (event.type === 'message_end') {
-    const messages = updateAssistant(current.messages, active.assistantMessageId, active.requestId, message => ({ ...message, id: event.mode === 'conversation' ? event.messageId : message.id, generationStatus: event.generationStatus }))
+    const messages = updateAssistant(current.messages, active.assistantMessageId, active.requestId, message => ({
+      ...message,
+      id: event.mode === 'conversation' ? event.messageId : message.id,
+      generationStatus: event.generationStatus,
+      runSteps: message.runSteps?.map((step) => step.status === 'loading' ? { ...step, status: 'success' as const } : step),
+    }))
     const pendingPair = event.mode === 'conversation' && current.conversation && current.userMessageId && active.assistantMessageId
       ? { assistantMessageId: active.assistantMessageId, conversationId: current.conversation.id, requestId: active.requestId, userMessageId: current.userMessageId }
       : null

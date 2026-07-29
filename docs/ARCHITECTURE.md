@@ -26,6 +26,7 @@
 - `src/features/knowledge/components/KnowledgeScopeSelectorModal.tsx`：智能体编辑页的只读资料范围选择器；复用资料树读取接口，负责目录导航、搜索和多选，不承载资料管理操作。
 - `src/features/knowledge/components/KnowledgeNavigationToolbar.tsx`：资料树的共享导航、面包屑和搜索工具栏；知识库管理页与智能体资料范围选择器共用同一结构和样式。
 - `src/features/agents/components/AgentKnowledgeScopeField.tsx`：编辑页资料范围的已绑定数量展示、清空及选择器打开入口；仅读取资料树以区分文件与文件夹。
+- `src/features/chat/components/ChatRunSummary.tsx`：将聊天 SSE 运行状态归纳为可折叠的大步骤和结构化子步骤，不展示模型原始思维链。
 - `src/lib/auth.ts`：浏览器会话令牌的读取、保存、刷新和登出协调。
 - `src/stores/auth.ts`：Zustand 维护当前用户状态。
 - `src/pages/AuthPage.tsx`：由 `/login`、`/register` 路径决定模式的认证表单。

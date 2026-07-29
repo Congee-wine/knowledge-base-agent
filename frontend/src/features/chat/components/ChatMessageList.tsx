@@ -18,7 +18,14 @@ type Props = {
 
 function getRunSteps(message: ChatMessage, statusText: string | null | undefined): ChatRunStep[] {
   if (message.role !== 'assistant') return []
-  if (message.runSteps?.length) return message.runSteps.map(step => ({ ...step, status: message.generationStatus === 'generating' && step.status === 'loading' ? 'loading' : step.status }))
+  if (message.runSteps?.length) return message.runSteps.map(step => {
+    const completed = message.generationStatus !== 'generating' && step.status === 'loading'
+    return {
+      ...step,
+      status: completed ? 'success' : step.status,
+      title: completed && step.id.startsWith('generating-') ? '已生成回答' : step.title,
+    }
+  })
   if (message.generationStatus !== 'generating') return []
 
   return [{

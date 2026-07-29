@@ -31,6 +31,17 @@ describe('mergeMessages', () => {
     expect(result[0].content).toBe('local streaming')
   })
 
+  it('keeps streaming content when the local assistant also has run steps', () => {
+    const server = [msg('1', 'assistant', 'server empty', 'generating')]
+    const local = [{
+      ...msg('1', 'assistant', 'local streaming', 'generating'),
+      runSteps: [{ id: 'retrieving-1', status: 'success' as const, title: '正在检索资料' }],
+    }]
+    const result = mergeMessages(server, local, new Set(['1']))
+    expect(result[0].content).toBe('local streaming')
+    expect(result[0].runSteps).toHaveLength(1)
+  })
+
   it('never overrides server user messages with local', () => {
     const server = [msg('1', 'user', 'server final')]
     const local = [msg('1', 'user', 'local temp')]
