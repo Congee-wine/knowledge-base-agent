@@ -1,6 +1,5 @@
 import { render, screen } from '@testing-library/react'
 import { forwardRef, useImperativeHandle, type ReactNode } from 'react'
-import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import type { ChatMessage } from '../../../../types/chat'
 import { ChatMessageList } from '../ChatMessageList'
@@ -61,23 +60,16 @@ describe('ChatMessageList', () => {
       { documentNodeId: 'document-2', documentName: '服务协议.md', location: '第三章', snippet: '不应显示的另一片段' },
     ]
     const assistantMessage = { ...message(), role: 'assistant' as const, content: '回答内容', citations }
-    const { rerender } = render(
-      <MemoryRouter>
-        <ChatMessageList messages={[{ ...assistantMessage, generationStatus: 'generating' }]} pendingAssistant />
-      </MemoryRouter>,
-    )
+    const { rerender } = render(<ChatMessageList messages={[{ ...assistantMessage, generationStatus: 'generating' }]} pendingAssistant />)
 
     expect(screen.queryByText('引用2篇资料作为参考')).not.toBeInTheDocument()
 
-    rerender(
-      <MemoryRouter>
-        <ChatMessageList messages={[{ ...assistantMessage, generationStatus: 'complete' }]} pendingAssistant={false} />
-      </MemoryRouter>,
-    )
+    rerender(<ChatMessageList messages={[{ ...assistantMessage, generationStatus: 'complete' }]} pendingAssistant={false} />)
 
     expect(screen.getByText('引用2篇资料作为参考')).toBeInTheDocument()
     expect(screen.queryByText('不应显示的片段')).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: '智能应用.md' })).toHaveAttribute('href', '/app/knowledge/files/document-1/preview')
-    expect(screen.getByRole('link', { name: '服务协议.md' })).toHaveAttribute('href', '/app/knowledge/files/document-2/preview')
+    expect(screen.getByText('智能应用.md')).toBeInTheDocument()
+    expect(screen.getByText('服务协议.md')).toBeInTheDocument()
+    expect(screen.queryByRole('link')).not.toBeInTheDocument()
   })
 })

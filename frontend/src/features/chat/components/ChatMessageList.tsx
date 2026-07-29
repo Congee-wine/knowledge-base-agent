@@ -3,7 +3,6 @@ import { ArrowDownOutlined, CopyOutlined, DownOutlined, UpOutlined } from '@ant-
 import { Button, message, Tooltip } from 'antd'
 import { XMarkdown } from '@ant-design/x-markdown'
 import { useLayoutEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
 import type { BubbleListRef } from '@ant-design/x/es/bubble'
 import type { ChatMessage } from '../../../types/chat'
 import { ChatRunSummary, type ChatRunStep } from './ChatRunSummary'
@@ -53,15 +52,10 @@ function CitationList({ message }: { message: ChatMessage }) {
       </summary>
       <div className="chat-citations__list">
         {citations.map((citation, index) => (
-          <Link
-            aria-label={citation.documentName}
-            className="chat-citations__item"
-            key={citation.documentNodeId}
-            to={`/app/knowledge/files/${citation.documentNodeId}/preview`}
-          >
+          <div className="chat-citations__item" key={citation.documentNodeId}>
             <span className="chat-citations__index">{index + 1}</span>
             <span className="chat-citations__name">{citation.documentName}</span>
-          </Link>
+          </div>
         ))}
       </div>
     </details>
