@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from integrations.query_embeddings import embed_query
-from repositories import knowledge as knowledge_repository
+from repositories import knowledge_retrieval
 from retrieval.models import RetrievalSource
 from services.agent_strategy import KnowledgeOperation
 
@@ -15,14 +15,14 @@ def retrieve_for_agent(user_id: str, agent_id: str, query: str) -> list[Retrieva
     if not normalized_query:
         return []
     vector = embed_query(normalized_query)
-    return knowledge_repository.search_agent_chunks(user_id, agent_id, vector, RECALL_LIMIT)[:CONTEXT_LIMIT]
+    return knowledge_retrieval.search_agent_chunks(user_id, agent_id, vector, RECALL_LIMIT)[:CONTEXT_LIMIT]
 
 
 def execute_knowledge_operation(
     operation: KnowledgeOperation, user_id: str, agent_id: str, query: str,
 ) -> list[RetrievalSource]:
     if operation == "document_catalog":
-        return knowledge_repository.list_agent_documents(user_id, agent_id)
+        return knowledge_retrieval.list_agent_documents(user_id, agent_id)
     if operation == "semantic_search":
         return retrieve_for_agent(user_id, agent_id, query)
     return []

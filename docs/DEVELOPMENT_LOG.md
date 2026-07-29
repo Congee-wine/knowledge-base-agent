@@ -1,5 +1,43 @@
 # 开发日志
 
+## 2026-07-29：修复知识库文件删除的 embedding 任务外键冲突
+
+### 任务目标
+
+修复删除知识库文件或目录时，仍有关联 embedding 任务导致 `document_versions` 无法删除并返回 HTTP 500 的问题。
+
+### 实现内容
+
+- 在资料树递归删除事务中，按依赖顺序删除 `embedding_jobs`、`document_versions` 和资料节点。
+- 将检索查询从资料树仓储拆分到独立仓储模块，使原资料树仓储保持在项目文件行数限制内。
+- 新增仓储层回归测试，验证 embedding 任务先于文档版本删除。
+
+### 主要文件
+
+- `backend/repositories/knowledge.py`：资料树及其关联持久化删除。
+- `backend/repositories/knowledge_retrieval.py`：受资料范围约束的检索查询。
+- `backend/services/retrieval.py`：调用独立检索仓储。
+- `backend/tests/test_knowledge_repository.py`：删除顺序的回归测试。
+
+### 技术方案
+
+保持现有数据库外键的保护语义，由应用删除事务显式按子表到父表的顺序清理记录；不采用级联删除，避免将任务数据的清理范围隐式扩展到其他业务流程。
+
+### 接口或数据变化
+
+无。未新增依赖、接口或数据库迁移。
+
+### 验证情况
+
+- 通过：`python -m unittest tests.test_knowledge_repository tests.test_knowledge_service tests.test_document_worker_tasks`（12 项）。
+- 通过：`python -m py_compile repositories/knowledge.py repositories/knowledge_retrieval.py services/retrieval.py`。
+- 通过：`git diff --check`。
+- 未执行：浏览器端删除文件/目录复测。
+
+### 遗留问题
+
+- 需在运行中的 embedding Worker 场景下进行浏览器端复测，确认已出队但尚未执行的任务可因找不到任务记录安全退出。
+
 ## 2026-07-29：实现通用知识操作规划
 
 ### 任务目标
