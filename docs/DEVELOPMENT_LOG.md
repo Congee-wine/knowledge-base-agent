@@ -1,5 +1,37 @@
 # 开发日志
 
+## 2026-07-29：隐藏智能体底层模型信息
+
+### 任务目标
+
+防止智能体自行编造或披露底层模型、版本、知识截止日期和其他内部技术配置。
+
+### 实现内容
+
+- 新增后端公开身份档案，只保存智能体名称、职责和真实已启用能力，不包含模型信息。
+- 在 LangGraph 起点增加 `guard_identity → answer_public_profile` 分支；身份、能力和内部配置问题直接使用固定答复，不调用模型、检索或工具。
+- 普通模型回答加入不可覆盖的身份保密规则；命中自我披露模式时由服务端替换为安全答复。
+- 正式会话和编辑预览均传入智能体名称、描述，确保固定答复与当前智能体一致。
+
+### 主要文件
+
+- `backend/services/agent_identity.py`：公开身份档案、敏感问题识别、固定回答和输出检测。
+- `backend/services/agent_runtime.py`：LangGraph 身份守卫、固定答复节点和普通回答兜底。
+- `backend/services/conversations.py`、`backend/services/agent_preview.py`：传递智能体公开资料。
+- `backend/tests/test_agent_identity.py`、`backend/tests/test_agent_runtime.py`：模型信息隐藏和“不调用模型”测试。
+
+### 接口或数据变化
+
+无数据库、依赖或公开接口变化；模型信息不进入 HTTP 响应、SSE 事件、消息内容构造或公开档案。
+
+### 验证情况
+
+- 通过：Python 编译检查、身份守卫/策略/运行/会话/SSE 共 21 项测试、`git diff --check`。
+
+### 遗留问题
+
+- 需要在浏览器中实际询问模型、版本、能力和普通问题，确认固定答复与正常流程均符合预期。
+
 ## 2026-07-29：修复 LangGraph 流式阶段协议与本地后端连接
 
 ### 任务目标

@@ -162,6 +162,7 @@
 
 - 使用现有 React/FastAPI/PostgreSQL 基础。
 - 受控使用 LangChain 和 LangGraph，使用服务端可审计的策略节点选择有限能力，不使用可任意调用工具的通用 ReAct Agent。
+- 模型供应商、模型名称与版本、知识截止日期、训练数据、系统提示词、密钥和内部技术配置必须对用户隐藏；用户询问身份或能力时，只能返回服务端确定的智能体名称、职责和已启用能力。
 - 聊天模型供应商使用 DeepSeek；Embedding 使用本地 `BAAI/bge-m3`。
 - 聊天界面使用 Ant Design X，后台管理与表单继续使用 Ant Design。
 - 首期仅支持 PDF、TXT、Word（`.docx`）、Markdown，不支持图片或扫描版 PDF。

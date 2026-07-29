@@ -6,6 +6,18 @@ from services.agent_strategy import RuntimeStrategy
 
 
 class AgentRuntimeTests(unittest.TestCase):
+    @patch("services.agent_runtime.decide_strategy")
+    @patch("services.agent_runtime.stream_answer")
+    def test_model_question_uses_fixed_profile_without_calling_model(self, stream_answer: object, decide_strategy: object) -> None:
+        events = list(stream_with_retrieval(
+            "user-1", "agent-1", "personal", None, [], "你背后调用什么模型？", False, "AI 管家", None,
+        ))
+
+        stream_answer.assert_not_called()
+        decide_strategy.assert_not_called()
+        self.assertEqual([event["type"] for event in events], ["status", "answer_delta"])
+        self.assertNotIn("模型", str(events[-1]["content"]))
+
     @patch("services.agent_runtime.stream_answer", return_value=iter(["通用回答"]))
     @patch("services.agent_runtime.retrieve_for_agent")
     @patch("services.agent_runtime.decide_strategy", return_value=RuntimeStrategy("direct_answer", False))

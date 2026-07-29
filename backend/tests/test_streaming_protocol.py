@@ -57,7 +57,7 @@ class StreamingProtocolTests(unittest.TestCase):
     @patch("services.conversations.stream_with_retrieval", return_value=iter([{"type": "answer_delta", "content": "answer"}]))
     @patch("services.conversations.conversation_repository.list_valid_history")
     @patch("services.conversations.conversation_repository.start_stream_generation")
-    @patch("services.conversations._ensure_active_agent", return_value=SimpleNamespace(kind="personal", system_prompt="prompt"))
+    @patch("services.conversations._ensure_active_agent", return_value=SimpleNamespace(kind="personal", system_prompt="prompt", name="测试智能体", description="测试职责"))
     def test_conversation_runtime_uses_only_valid_history(
         self,
         _: object,
@@ -77,6 +77,7 @@ class StreamingProtocolTests(unittest.TestCase):
         list_history.assert_called_once_with("conversation-1", 7, 10)
         stream_with_retrieval.assert_called_once_with(
             "user-1", "agent-1", "personal", "prompt", [{"role": "user", "content": "previous question"}], "new question", False,
+            "测试智能体", "测试职责",
         )
         complete_generation.assert_called_once_with("assistant-1", "answer", [])
         self.assertEqual(events[-1]["type"], "message_end")

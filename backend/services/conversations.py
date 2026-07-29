@@ -90,7 +90,10 @@ def stream_message(user_id: str, agent_id: str, conversation_id: str | None, con
         answer = ""
         citations: list[dict[str, object]] = []
         try:
-            for event in stream_with_retrieval(user_id, agent_id, agent.kind, agent.system_prompt, history, content, use_knowledge_base):
+            for event in stream_with_retrieval(
+                user_id, agent_id, agent.kind, agent.system_prompt, history, content, use_knowledge_base,
+                agent.name, agent.description,
+            ):
                 if event["type"] == "answer_delta": answer += str(event["content"])
                 if event["type"] == "sources": citations = list(event["items"])
                 yield event

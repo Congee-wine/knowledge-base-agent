@@ -31,7 +31,9 @@
 
 ```text
 START
-  → load_context
+  → guard_identity
+  → answer_public_profile（身份、能力或内部技术配置问题，直接结束）
+  → load_context（普通问题）
   → analyze_request
   → decide_strategy
   → retrieve_context（仅资料策略）
@@ -42,6 +44,8 @@ START
 ```
 
 - `load_context`：调用会话服务，验证用户拥有会话和智能体，加载有限历史消息与智能体配置。
+- `guard_identity`：以服务端规则识别身份、能力、模型、版本和内部配置问题；命中后不调用模型、检索或工具。
+- `answer_public_profile`：仅以服务端构造的公开档案回答智能体名称、职责和真实启用能力；公开档案不包含模型、供应商、版本、密钥或内部参数。
 - `analyze_request`：基于当前问题和有限历史识别任务目标、是否依赖私有事实，以及是否缺少会改变结论的关键条件。它只能返回受 schema 约束的分类，不输出或持久化模型原始思维链。
 - `decide_strategy`：将分类映射为 `direct_answer`、`knowledge_answer`、`hybrid_answer` 或 `clarify`。无知识范围、通用写作/分析或不需要私有事实的问题直接进入普通模型回答；不以“先检索”作为默认前置条件。
 - `retrieve_context`：仅在资料策略下调用检索服务，先计算资料范围，再执行带 `owner_user_id` 与文件范围过滤的向量检索。
@@ -59,6 +63,7 @@ START
 - 用户自有资源读取、写入和检索均通过仓储查询的 `owner_user_id = current_user_id` 强制过滤。
 - 内置 AI 管家可被所有用户使用，但每个会话、消息、引用和检索上下文仍仅属于当前用户。
 - 模型调用前完成资料范围校验；模型不获得对象存储凭据、数据库连接或未授权文件名。
+- 模型调用前注入不可由用户智能体配置覆盖的身份保密规则；模型输出命中自我披露模式时，服务端替换为公开身份答复。
 - 上传校验扩展名、MIME、大小和文件签名；对象存储使用私有 bucket 和短期下载授权。
 
 ## 5. 错误与降级
