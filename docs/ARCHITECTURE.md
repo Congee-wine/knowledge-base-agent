@@ -23,6 +23,9 @@
 - `src/routes/paths.ts`：前端路径常量；导航与路由声明共用。
 - `src/routes/GuestOnly.tsx`、`src/routes/RequireAuth.tsx`：匿名与受保护路由边界，支持登录后回跳。
 - `src/api/`：HTTP 请求和认证接口封装。
+- `src/features/knowledge/components/KnowledgeScopeSelectorModal.tsx`：智能体编辑页的只读资料范围选择器；复用资料树读取接口，负责目录导航、搜索和多选，不承载资料管理操作。
+- `src/features/knowledge/components/KnowledgeNavigationToolbar.tsx`：资料树的共享导航、面包屑和搜索工具栏；知识库管理页与智能体资料范围选择器共用同一结构和样式。
+- `src/features/agents/components/AgentKnowledgeScopeField.tsx`：编辑页资料范围的已绑定数量展示、清空及选择器打开入口；仅读取资料树以区分文件与文件夹。
 - `src/lib/auth.ts`：浏览器会话令牌的读取、保存、刷新和登出协调。
 - `src/stores/auth.ts`：Zustand 维护当前用户状态。
 - `src/pages/AuthPage.tsx`：由 `/login`、`/register` 路径决定模式的认证表单。

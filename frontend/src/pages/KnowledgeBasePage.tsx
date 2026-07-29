@@ -1,4 +1,4 @@
-import { AppstoreFilled, CloseOutlined, DeleteOutlined, LeftOutlined, ReloadOutlined, RightOutlined, SearchOutlined, SwapOutlined, UnorderedListOutlined, UpOutlined } from '@ant-design/icons'
+import { AppstoreFilled, CloseOutlined, DeleteOutlined, ReloadOutlined, SwapOutlined, UnorderedListOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Empty, Input, Modal, Radio, Result, Spin, message } from 'antd'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -7,6 +7,7 @@ import { createKnowledgeFolder, deleteKnowledgeNode, getKnowledgeTree, moveKnowl
 import { KnowledgeActionMenus } from '../features/knowledge/components/KnowledgeActionMenus'
 import { KnowledgeContextMenu } from '../features/knowledge/components/KnowledgeContextMenu'
 import { KnowledgeItemGrid } from '../features/knowledge/components/KnowledgeItemGrid'
+import { KnowledgeNavigationToolbar } from '../features/knowledge/components/KnowledgeNavigationToolbar'
 import { knowledgeKeys } from '../features/knowledge/knowledgeKeys'
 import type { KnowledgeActionId, KnowledgeItem } from '../features/knowledge/types'
 import { routes } from '../routes/paths'
@@ -79,15 +80,6 @@ export function KnowledgeBasePage() {
     setFolderHistory([undefined])
     setHistoryIndex(0)
     setSelectedIds([])
-  }, [currentFolderId, items])
-  const breadcrumbs = useMemo(() => {
-    const trail: KnowledgeItem[] = []
-    let node = currentFolderId ? items.find(item => item.id === currentFolderId) : undefined
-    while (node) {
-      trail.unshift(node)
-      node = node.parentId ? items.find(item => item.id === node!.parentId) : undefined
-    }
-    return trail
   }, [currentFolderId, items])
   const visibleItems = useMemo(() => {
     const keyword = searchText.trim().toLocaleLowerCase()
@@ -173,7 +165,7 @@ export function KnowledgeBasePage() {
   if (treeQuery.isError) return <Result status="error" title="无法加载资料树" extra={<button type="button" onClick={() => void invalidateTree()}>重试</button>} />
   return <section className="knowledge-page" onClick={() => { setActiveMenu(null); setContextItem(null) }}>
     <header className="knowledge-hero"><div className="knowledge-hero__title"><div className="knowledge-hero__folder" aria-hidden="true">▰</div><div><h1>文档管理</h1><p>深度解析文档内容，精准提取关键信息，为您构建专属知识库。</p></div></div>
-      <div className="knowledge-toolbar" onClick={event => event.stopPropagation()}><div className="knowledge-toolbar__path"><button aria-label="后退" className={historyIndex > 0 ? 'is-enabled' : ''} disabled={historyIndex === 0} type="button" onClick={goBack}><LeftOutlined /></button><button aria-label="前进" className={historyIndex < folderHistory.length - 1 ? 'is-enabled' : ''} disabled={historyIndex >= folderHistory.length - 1} type="button" onClick={goForward}><RightOutlined /></button><button aria-label="返回上一级" className={currentFolderId ? 'is-enabled' : ''} disabled={!currentFolderId} type="button" onClick={() => navigateToFolder(items.find(item => item.id === currentFolderId)?.parentId)}><UpOutlined /></button><nav className="knowledge-breadcrumb" aria-label="资料路径"><button type="button" onClick={() => navigateToFolder(undefined)}>根目录</button>{breadcrumbs.map(item => <span key={item.id}><i>/</i><button type="button" onClick={() => navigateToFolder(item.id)}>{item.name}</button></span>)}</nav><Input allowClear onChange={event => setSearchText(event.target.value)} placeholder="搜索名称" prefix={<SearchOutlined />} value={searchText} /></div>
+      <div className="knowledge-toolbar" onClick={event => event.stopPropagation()}><KnowledgeNavigationToolbar canGoForward={historyIndex < folderHistory.length - 1} currentFolderId={currentFolderId} historyIndex={historyIndex} items={items} searchPlaceholder="搜索名称" searchText={searchText} onGoBack={goBack} onGoForward={goForward} onNavigateToFolder={navigateToFolder} onSearchTextChange={setSearchText} />
         <KnowledgeActionMenus activeMenu={activeMenu} onMenuChange={setActiveMenu} onCreateFolder={() => { setActiveMenu(null); setCreateModalOpen(true) }} onUploadFile={() => { setActiveMenu(null); uploadInputRef.current?.click() }} onUploadFolder={() => { setActiveMenu(null); folderUploadInputRef.current?.click() }} /><div className="knowledge-view-actions"><button aria-label="网格视图" className={view === 'grid' ? 'is-active' : ''} type="button" onClick={() => setView('grid')}><AppstoreFilled /></button><button aria-label="列表视图" className={view === 'list' ? 'is-active' : ''} type="button" onClick={() => setView('list')}><UnorderedListOutlined /></button><button aria-label="刷新资料" type="button" onClick={() => void invalidateTree()}><ReloadOutlined /></button></div></div></header>
     <div className="knowledge-page__summary"><span>{folderCount} 个文件夹，{visibleItems.length - folderCount} 个文件</span>{selectedIds.length > 0 && <div className="knowledge-batch-actions"><strong>已选择 {selectedIds.length} 项</strong><button className="knowledge-batch-actions__move" type="button" onClick={() => openMoveDialog(selectedIds)}><SwapOutlined /> 移动</button><button className="knowledge-batch-actions__delete" type="button" onClick={() => removeItems(selectedIds)}><DeleteOutlined /> 删除</button><button type="button" onClick={() => setSelectedIds([])}><CloseOutlined /> 取消</button></div>}</div>
     <main className={`knowledge-canvas ${view === 'list' ? 'is-list-view' : ''}`}>{visibleItems.length ? <KnowledgeItemGrid items={visibleItems} selectedIds={selectedIds} onOpenFolder={item => navigateToFolder(item.id)} onOpenFile={openFilePreview} onSelectionChange={(id, selected) => setSelectedIds(ids => selected ? [...ids, id] : ids.filter(value => value !== id))} onContextMenu={(item, position) => { setSelectedIds([item.id]); setContextItem({ item, position }) }} /> : <Empty description="暂无资料" image={Empty.PRESENTED_IMAGE_SIMPLE} />}</main>
