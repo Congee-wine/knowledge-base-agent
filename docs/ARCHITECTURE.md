@@ -1,136 +1,257 @@
 # 项目架构
 
-## 文件预览链路
-
-资料树只负责导航。`GET /api/knowledge/files/{nodeId}/preview` 通过当前用户、资料节点与当前文件版本联合校验后读取私有对象：TXT/Markdown 返回 UTF-8 文本，PDF 返回二进制流，DOCX 由 `services/document_preview.py` 转换为受控 HTML。浏览器端 PDF 使用临时 Blob URL，DOCX 运行在无权限的沙箱 iframe 中；对象存储路径和凭证不进入响应。
-
 ## 总体说明
 
-当前项目是前后端分离的 Web 应用。`frontend/` 提供 React 单页应用，`backend/` 提供 FastAPI API。认证、智能体、会话、直接 SSE 聊天、资料树、异步文本解析和知识库检索基础均已实现；知识库模式运行层采用服务端受控的“资料就绪检查 → 固定检索 → 证据判断 → 依据资料回答”工作流。
+前后端分离的 Web 应用。`frontend/` 提供 React 单页应用，`backend/` 提供 FastAPI API。核心链路为：用户通过智能体发起对话 → LangGraph 工作流决定路由策略 → 知识库混合检索 + Rerank → DeepSeek 流式生成回答 → SSE 推送到前端。
 
 ```text
 浏览器（React + Vite）
   ├─ /api/auth/* ────────────────> FastAPI 认证路由 ─> 认证服务 ─> PostgreSQL
-  └─ /api/chat（Bearer Token） ─> FastAPI 聊天路由 ─> 当前仅回显请求
+  ├─ /api/agents/* ──────────────> FastAPI 智能体路由 ─> 智能体服务 ─> PostgreSQL
+  ├─ /api/conversations/* ───────> FastAPI 会话路由 ─> 会话服务 ─> LangGraph ─> DeepSeek
+  │                                                              └─> RAG 检索 ─> pgvector + BGE-M3 + Reranker
+  └─ /api/knowledge/* ───────────> FastAPI 知识库路由 ─> 知识库服务 ─> MinIO + PostgreSQL
+                                                           └─> RQ 队列 ─> Worker（解析/Embedding/检索）
 ```
 
 ## 目录与模块职责
 
 ### 前端：`frontend/`
 
+**入口与路由**
 - `src/main.tsx`：创建 React 根节点并注入 React Query。
-- `src/App.tsx`：认证状态恢复、令牌刷新调度和应用路由组装。
+- `src/App.tsx`：认证状态恢复、令牌刷新调度、应用路由组装、按需加载。
 - `src/routes/paths.ts`：前端路径常量；导航与路由声明共用。
 - `src/routes/GuestOnly.tsx`、`src/routes/RequireAuth.tsx`：匿名与受保护路由边界，支持登录后回跳。
-- `src/api/`：HTTP 请求和认证接口封装。
-- `src/features/knowledge/components/KnowledgeScopeSelectorModal.tsx`：智能体编辑页的只读资料范围选择器；复用资料树读取接口，负责目录导航、搜索和多选，不承载资料管理操作。
-- `src/features/knowledge/components/KnowledgeNavigationToolbar.tsx`：资料树的共享导航、面包屑和搜索工具栏；知识库管理页与智能体资料范围选择器共用同一结构和样式。
-- `src/features/agents/components/AgentKnowledgeScopeField.tsx`：编辑页资料范围的已绑定数量展示、清空及选择器打开入口；仅读取资料树以区分文件与文件夹。
-- `src/features/chat/components/ChatRunSummary.tsx`：将聊天 SSE 运行状态归纳为可折叠的大步骤和结构化子步骤，不展示模型原始思维链。
-- `src/lib/auth.ts`：浏览器会话令牌的读取、保存、刷新和登出协调。
-- `src/stores/auth.ts`：Zustand 维护当前用户状态。
-- `src/pages/AuthPage.tsx`：由 `/login`、`/register` 路径决定模式的认证表单。
-- `src/pages/NotFoundPage.tsx`：未知路径的 404 页面。
-- `src/layouts/AppLayout.tsx`：已登录后的应用布局、导航和登出入口。
-- `src/pages/AiManagerPage.tsx`、`src/pages/EmptyPage.tsx`：当前为空内容页面；AI 管家、智能体和知识库 UI 均未实现。
-- `public/auth-hero.png`：认证页使用的静态图片资源。
 
-前端使用 `VITE_API_BASE_URL` 指定 API 基地址；默认值是本地后端地址。环境变量的真实值不应写入文档。
+**API 层**
+- `src/api/http.ts`：统一 HTTP 请求封装（JSON / Form / Blob），`ApiError` 错误提取。
+- `src/api/auth.ts`：认证接口（注册、登录、刷新、登出、获取当前用户）。
+- `src/api/agents.ts`：智能体 CRUD 接口。
+- `src/api/chat.ts`：SSE 流式聊天、中断生成接口。
+- `src/api/knowledge.ts`：知识库资料树、上传、重命名、移动、删除、预览接口。
+
+**业务模块**
+- `src/features/chat/hooks/useStreamingChat.ts`：流式对话核心 Hook，管理多会话并行流、乐观更新、中断恢复。
+- `src/features/chat/hooks/useConversations.ts`：会话列表与详情管理。
+- `src/features/chat/streaming/sseParser.ts`：自研 SSE 解析器（分块、CRLF、多行 data）。
+- `src/features/chat/utils/mergeMessages.ts`：本地/服务端消息合并逻辑。
+- `src/features/chat/components/ChatMessageList.tsx`：消息列表（Bubble.List + Markdown 流式渲染 + 引用展示）。
+- `src/features/chat/components/ChatRunSummary.tsx`：运行步骤可视化（可折叠大步骤 + 子步骤）。
+- `src/features/chat/components/ChatComposer.tsx`：聊天输入框（Ant Design X Sender）。
+- `src/features/agents/hooks/useAgents.ts`、`useAgent.ts`：智能体列表与详情管理。
+- `src/features/agents/components/AgentEditorPreview.tsx`：编辑页实时对话预览。
+- `src/features/agents/components/SystemPromptEditor.tsx`：Markdown 系统提示词编辑器。
+- `src/features/agents/components/AgentKnowledgeScopeField.tsx`：知识范围绑定入口。
+- `src/features/knowledge/components/KnowledgeItemGrid.tsx`：资料网格视图（多选、右键菜单）。
+- `src/features/knowledge/components/KnowledgeScopeSelectorModal.tsx`：资料范围选择器弹窗。
+- `src/features/knowledge/components/KnowledgeNavigationToolbar.tsx`：资料树导航工具栏。
+
+**状态与工具**
+- `src/stores/auth.ts`：Zustand 维护当前用户状态。
+- `src/lib/auth.ts`：浏览器会话令牌的读取、保存、刷新和登出协调（单例 Promise 防并发）。
+- `src/types/`：共享 TypeScript 类型定义。
+
+**页面**
+- `src/pages/AuthPage.tsx`：注册/登录表单。
+- `src/pages/AiManagerPage.tsx`：AI 管家欢迎页。
+- `src/pages/AgentListPage.tsx`：智能体列表页。
+- `src/pages/AgentEditorPage.tsx`：智能体编辑工作台（三栏布局）。
+- `src/pages/ChatPage.tsx`：正式聊天页。
+- `src/pages/KnowledgeBasePage.tsx`：知识库管理页。
+- `src/pages/DocumentPreviewPage.tsx`：文件预览页。
 
 ### 后端：`backend/`
 
-- `main.py`：FastAPI 应用、开发环境 CORS、健康检查与路由注册；通过生命周期初始化和关闭 PostgreSQL 连接池，启动时不修改数据库结构。
-- `config.py`：从 `.env` 读取数据库地址、连接池大小和认证配置；`DATABASE_URL` 为必需配置。
-- `database.py`：psycopg PostgreSQL 连接池；业务 Repository 通过 `get_connection()` 借用并归还连接，不在此处创建或修改表。
-- `migrations/`：Alembic 版本化数据库迁移；当前包含认证基线和 pgvector 扩展启用。
-- `integrations/object_storage.py`：MinIO/S3 兼容私有对象存储客户端适配。
-- `workers/queue.py`：Redis/RQ 文档处理队列适配。
-- `workers/tasks.py`：无副作用的文档 Worker 探测任务；只读验证 PostgreSQL 与私有 MinIO Bucket 连通性，不承担文档解析、上传或模型加载业务。
-- `workers/runner.py`：文档处理标准 RQ Worker 进程入口，仅在 Linux Worker 容器中运行。
-- `repositories/knowledge.py`：资料树、文件版本和智能体资料范围的数据访问；所有查询强制以用户归属过滤。
-- `services/knowledge.py`：资料树组合、文件夹创建及父节点/同名规则；上传与任务投递尚未接入。
-- `routers/knowledge.py`、`schemas/knowledge.py`：资料树读取和创建文件夹 HTTP 契约。
-- `Dockerfile.worker`：Worker 的 Python Linux 运行镜像定义；构建时不复制本机 `.env`。
-- `scripts/verify_infrastructure.py`：验证 Redis、私有 Bucket、对象写读删除和 RQ 测试任务的本地脚本。
-- `docker-compose.infrastructure.yml`：本地 Redis、MinIO 及持久化数据卷的启动配置。
+**应用入口**
+- `main.py`：FastAPI 应用、CORS、全局异常处理器（DomainError）、健康检查与路由注册；通过生命周期管理 PostgreSQL 连接池。
+- `config.py`：从 `.env` 读取数据库、认证、模型、存储、队列等配置。
+- `database.py`：psycopg PostgreSQL 连接池（`ConnectionPool`），业务 Repository 通过 `get_connection()` 借用并归还连接。
 - `dependencies.py`：HTTP Bearer 认证依赖和当前用户解析。
-- `routers/auth.py`：认证 HTTP 路由、请求绑定和响应状态。
-- `routers/chat.py`：保留认证保护的旧聊天回显路由；正式智能体聊天由 `routers/conversations.py` 的 SSE 路由承载。
-- `schemas/`：Pydantic 请求/响应模型。
-- `services/auth.py`：密码哈希、JWT 签发/校验、会话轮换与撤销业务规则。
-- `tests/test_auth_integration.py`：认证 API 到 PostgreSQL 的集成测试；使用唯一测试用户并在每个用例结束后清理测试数据。
+
+**路由层（`routers/`）**
+- `auth.py`：认证路由（注册、登录、刷新、登出、获取当前用户）。
+- `agents.py`：智能体 CRUD 路由。
+- `conversations.py`：会话管理与 SSE 流式聊天路由。
+- `knowledge.py`：知识库资料树、上传、重命名、移动、删除、预览路由。
+- `chat.py`：保留认证保护的旧聊天回显路由（骨架）。
+
+**服务层（`services/`）**
+- `auth.py`：密码哈希、JWT 签发/校验、会话轮换与撤销。
+- `agents.py`：智能体业务规则（CRUD、默认设置、内置不可变保护）。
+- `conversations.py`：会话与消息业务规则（创建、查询、流式生成、中断）。
+- `knowledge.py`：知识库业务规则（资料树、上传、重命名、移动、删除、任务投递）。
+- `agent_runtime.py`：LangGraph 智能体工作流（状态图编排、条件路由、流式输出）。
+- `agent_strategy.py`：运行时策略决策（直接回答 / 知识库回答 / 目录查询）。
+- `agent_identity.py`：模型信息隐藏守卫（身份、能力、内部配置问题固定答复）。
+- `agent_preview.py`：智能体编辑预览逻辑。
+- `retrieval.py`：RAG 检索服务（向量 + 关键字 + RRF 融合 + Rerank + 上下文筛选）。
+- `document_preview.py`：文件预览内容提取。
+- `document_validation.py`：文档上传校验。
+- `errors.py`：领域错误定义（`DomainError` + 错误码 + HTTP 状态码）。
+
+**仓储层（`repositories/`）**
+- `agents.py`：智能体数据访问（CRUD、所有权校验、可见性过滤）。
+- `conversations.py`：会话与消息数据访问（创建、查询、流式生成状态管理、幂等性）。
+- `knowledge.py`：知识库数据访问（资料树、文件版本、处理任务、Embedding 任务、递归查询、Agent 资料范围）。
+- `knowledge_retrieval.py`：检索数据访问（向量检索、关键字检索、文档列表、检索诊断记录）。
+
+**检索模块（`retrieval/`）**
+- `chunking.py`：智能文档分块（标题检测 + 语义边界 + 180 字符重叠窗口）。
+- `models.py`：检索结果模型（`RetrievalSource` + 引用格式化）。
+
+**集成层（`integrations/`）**
+- `deepseek.py`：DeepSeek 模型客户端（LangChain OpenAI 兼容）。
+- `embeddings.py`：BGE-M3 Embedding 模型（`BGEM3FlagModel`，延迟加载）。
+- `reranker.py`：BGE-Reranker 重排模型（`FlagReranker`，延迟加载）。
+- `query_embeddings.py`：RQ 远程调用封装（Embedding 和 Rerank 通过任务队列异步执行）。
+- `object_storage.py`：MinIO 对象存储客户端（上传、读取、删除）。
+
+**异步任务（`workers/`）**
+- `queue.py`：RQ 队列定义（`document-processing`、`embedding`、`retrieval`）。
+- `tasks.py`：Worker 任务（文档解析、Embedding 生成、查询 Embedding、Rerank）。
+- `runner.py`：Worker 进程入口。
+
+**数据库迁移（`migrations/`）**
+- 13 个 Alembic 迁移文件，覆盖认证、智能体、会话、知识库、Embedding、检索可观测性。
+
+**测试（`tests/`）**
+- 16 个测试文件，覆盖认证集成、智能体会话集成、会话仓储/服务、分块、检索、文档处理、Agent 运行时/策略/身份、流式协议等。
 
 ## 数据库与存储
 
-Web API 使用 `psycopg_pool.ConnectionPool` 复用 PostgreSQL 连接，默认最小 1、最大 10 条连接，可通过 `DATABASE_POOL_MIN_SIZE`、`DATABASE_POOL_MAX_SIZE` 调整。应用启动时预建最小连接数，关闭时释放；Alembic 迁移保持独立的 `NullPool` 短连接，不共享运行时连接池。
+### PostgreSQL
 
-当前可由代码确认的 PostgreSQL 对象：
+Web API 使用 `psycopg_pool.ConnectionPool` 复用连接，默认最小 1、最大 10 条。Alembic 迁移使用独立的 `NullPool` 短连接。
 
-- `users`：用户 ID、唯一邮箱、密码哈希、创建时间和最近登录时间。
-- `auth_sessions`：会话 ID、用户 ID、当前刷新令牌标识、会话和刷新令牌到期时间、撤销时间。
+主要数据表：
+- `users`：用户 ID、唯一邮箱、密码哈希、创建时间、最近登录时间。
+- `auth_sessions`：会话 ID、用户 ID、刷新令牌标识、会话/刷新到期时间、撤销时间。
 - `revoked_tokens`：已撤销访问令牌的标识和过期时间。
-- `vector` 扩展：由认证基线迁移请求启用。
+- `agents`：智能体 ID、所有者、名称、描述、系统提示词、头像存储键、交互类型、联网入口、是否内置。
+- `user_preferences`：用户默认智能体设置。
+- `agent_preset_questions`：智能体预设问题。
+- `conversations`：会话 ID、用户 ID、智能体 ID、标题。
+- `messages`：消息 ID、会话 ID、角色、内容、消息序号、回复关系、生成状态、创建时间。
+- `knowledge_nodes`：资料节点 ID、所有者、父节点、类型（folder/file）、名称。
+- `document_versions`：文档版本 ID、资料节点、版本号、存储键、MIME 类型、字节大小、内容哈希、处理状态、索引状态、是否当前版本。
+- `ingestion_jobs`：文档解析任务（状态、尝试次数、错误信息）。
+- `embedding_jobs`：Embedding 任务（状态、尝试次数、错误信息）。
+- `document_chunks`：文档分块（内容、页码、元数据 JSON、Embedding 向量、Embedding 模型）。
+- `agent_knowledge_scopes`：Agent 知识范围授权（Agent ID → 资料节点 ID）。
+- `message_citations`：消息引用持久化。
+- `retrieval_runs`：检索运行记录（查询摘要、时间）。
+- `retrieval_candidates`：检索候选记录（分块 ID、向量排名、关键字排名、融合排名、重排分数、是否选中、丢弃原因）。
 
-已验证：认证表已初始化并由 Alembic `20260720_0001` 管理；本地 MinIO 私有 Bucket 可创建并完成测试对象写读删除。迁移 `20260727_0009` 已定义文档元数据、处理任务、分块和资料范围表，但尚未应用到真实数据库；向量索引、上传、解析、Embedding、检索和重排尚未实现。
+### Redis
+
+- RQ 任务队列消息中间件（三个队列：`document-processing`、`embedding`、`retrieval`）。
+
+### MinIO
+
+- 私有对象存储（`ai-platform-private` Bucket）。
+- 存储内容：知识库文件、智能体头像。
+- 存储路径格式：`knowledge-files/{user_id}/{uuid}/{filename}`、`agent-avatars/{user_id}/{uuid}/{filename}`。
+
+### pgvector
+
+- `vector` 扩展由迁移 `20260720_0001` 启用。
+- `document_chunks.embedding` 列类型为 `vector`，使用余弦相似度（`<=>` 运算符）检索。
 
 ## 认证流程
 
 1. 前端认证页调用注册或登录 API。
-2. 注册时后端校验邮箱、密码长度和条款同意，随后创建带密码哈希的用户记录。
-3. 登录时后端验证密码，创建会话，并返回访问 JWT、刷新 JWT 和用户信息。
-4. 前端将令牌和用户信息写入浏览器 `localStorage`，并在启动时以访问令牌调用 `/api/auth/me`。
-5. 访问令牌无效时，前端尝试用刷新令牌调用 `/api/auth/refresh`；后端验证会话、轮换刷新令牌标识并返回新令牌对。
-6. 受保护接口通过 `Authorization: Bearer <access token>` 解析当前用户。登出时前端请求撤销，随后清除本地会话。
-7. 未登录访问 `/app/*` 时，`RequireAuth` 将原路径写入路由状态并跳转 `/login`；登录成功后 `GuestOnly` 回到原路径。已登录用户访问 `/login` 或 `/register` 会跳转至原目标或 `/app/chat`。
+2. 注册时后端校验邮箱、密码长度，随后创建带 Argon2 哈希的用户记录。
+3. 登录时后端验证密码，创建会话，返回访问 JWT、刷新 JWT 和用户信息。
+4. 前端将令牌和用户信息写入 `localStorage`，启动时以访问令牌调用 `/api/auth/me`。
+5. 访问令牌过期前 3 分钟，前端自动调用 `/api/auth/refresh`；后端验证会话、轮换刷新令牌标识并返回新令牌对。并发请求通过单例 Promise 锁防止重复刷新。
+6. 受保护接口通过 `Authorization: Bearer <access token>` 解析当前用户。
+7. 登出时前端请求撤销（访问令牌加入 `revoked_tokens`、会话标记 `revoked_at`），随后清除本地存储。
+8. 未登录访问 `/app/*` 时，`RequireAuth` 将原路径写入路由状态并跳转 `/login`；登录成功后回跳。
+
+## RAG 检索流程
+
+1. 用户发送消息，`conversations.py` 调用 `agent_runtime.py` 的 `stream_with_retrieval()`。
+2. LangGraph 工作流执行 `guard_identity` 节点：检测是否为身份/能力/配置问题，是则固定答复并跳过模型调用。
+3. 执行 `check_knowledge_availability` 节点：检查 Agent 资料范围内是否存在 ready 索引文件。
+4. 执行 `analyze_request` 节点：`agent_strategy.py` 决定路由策略（`document_catalog` / `semantic_search` / `direct_answer`）。
+5. 若为 `semantic_search`，执行 `execute_knowledge_operation` 节点：
+   - `retrieval.py` 调用 `embed_query()` 通过 RQ 远程获取查询向量。
+   - `knowledge_retrieval.py` 执行向量检索（pgvector 余弦相似度，Top 20）和关键字检索（ILIKE，Top 20）。
+   - `_fuse_candidates()` 使用 RRF 融合算法合并两种候选。
+   - `rerank_query_candidates()` 通过 RQ 远程调用 BGE-Reranker 重排。
+   - `_select_context_sources()` 按重排分数阈值（0.30）和文件级上下文限额（每文件最多 2 个片段，总计最多 5 个片段）筛选。
+   - `_record_retrieval_diagnostics()` 持久化候选集和选中原因。
+6. 执行 `evaluate_evidence` 节点：判断是否有有效证据。
+7. 执行 `generate_answer` 节点：构造检索上下文，调用 DeepSeek 流式生成。
+8. SSE 生成器逐块将模型输出转换为 `answer_delta` 事件推送到前端。
+9. 生成完成后，`conversations.py` 持久化助手消息和引用。
+
+## LangGraph 工作流节点
+
+```text
+START
+  └─> guard_identity（身份守卫）
+        ├─ 需要回答身份问题 ─> answer_public_profile ─> END
+        └─ 正常问题 ─> check_knowledge_availability（知识可用性检查）
+              ├─ 无 ready 文件 ─> knowledge_unavailable ─> END
+              └─ 有 ready 文件 ─> analyze_request（策略分析）
+                    ├─ direct_answer ─> generate_answer ─> END
+                    └─ knowledge_answer ─> execute_knowledge_operation（检索）
+                                            └─> evaluate_evidence（证据评估）
+                                                  ├─ 有证据 ─> generate_answer ─> END
+                                                  ├─ 无证据 ─> no_match ─> END
+                                                  └─ 检索失败 ─> retrieval_failed ─> END
+```
 
 ## 前端路由
 
 ```text
 /
-├─ /login                 匿名登录页
-├─ /register              匿名注册页
-├─ /app                   受保护应用入口，重定向至 /app/chat
-│  ├─ /app/chat           AI 管家（当前为空页面）
-│  ├─ /app/agents         智能体（当前为空页面）
-│  └─ /app/knowledge-bases 知识库（当前为空页面）
-└─ *                      404 页面
+├─ /login                         匿名登录页
+├─ /register                      匿名注册页
+├─ /app                           受保护应用入口，重定向至 /app/chat
+│  ├─ /app/chat                   AI 管家欢迎页
+│  ├─ /app/chat/agents/:agentId   正式聊天页（SSE 流式对话）
+│  ├─ /app/agents                 智能体列表页
+│  ├─ /app/agents/:agentId/edit   智能体编辑工作台
+│  ├─ /app/knowledge-bases        知识库管理页
+│  └─ /app/knowledge-bases/files/:fileId/preview  文件预览页
+└─ *                              404 页面
 ```
 
 ## 当前接口
 
-| 接口 | 当前职责 | 状态 |
+| 接口 | 职责 | 状态 |
 | --- | --- | --- |
-| `GET /api/health` | 返回服务健康状态 | 已实现，未在本次启动验证 |
-| `POST /api/auth/register` | 创建用户 | 已实现，PostgreSQL 集成与重复注册测试通过 |
-| `POST /api/auth/login` | 验证密码并签发令牌 | 已实现，PostgreSQL 集成与错误密码测试通过 |
-| `POST /api/auth/refresh` | 刷新并轮换令牌 | 已实现，轮换与旧令牌重放拒绝测试通过 |
-| `GET /api/auth/me` | 获取当前用户 | 已实现，过期会话与撤销访问令牌拒绝测试通过 |
-| `POST /api/auth/logout` | 撤销令牌/会话 | 已实现，访问令牌和刷新会话撤销测试通过 |
-| `POST /api/chat` | 认证后返回回显文本 | 接口骨架，不是 AI 回答 |
-| `GET /api/chat/entry` | 解析当前用户默认智能体，未设置时回退内置 AI 管家 | 已实现，PostgreSQL 集成测试通过 |
-| `GET/POST/PATCH/DELETE /api/agents` | 智能体读取、创建、更新、软删除 | 已实现，所有权与内置不可变规则已测试 |
-| `PUT /api/agents/{agentId}/default` | 设为当前用户默认个人智能体 | 已实现，集成测试通过 |
-| `DELETE /api/agents/default` | 仅清空当前用户默认设置 | 已实现，集成测试通过 |
-| `GET/POST /api/conversations` | 按当前智能体列出/创建当前用户会话 | 已实现，用户与智能体隔离已测试 |
-| `GET /api/conversations/{conversationId}` | 获取当前用户单个会话及消息 | 已实现，用户隔离已测试 |
-| `POST /api/conversations/{conversationId}/messages` | 写入用户消息和阶段 2 回显助手消息 | 已实现，事务、顺序、空白校验和越权拒绝已测试 |
+| `GET /api/health` | 服务健康检查 | 已实现 |
+| `POST /api/auth/register` | 创建用户 | 已实现，集成测试通过 |
+| `POST /api/auth/login` | 验证密码并签发令牌 | 已实现，集成测试通过 |
+| `POST /api/auth/refresh` | 刷新并轮换令牌 | 已实现，轮换与重放拒绝测试通过 |
+| `GET /api/auth/me` | 获取当前用户 | 已实现，过期/撤销拒绝测试通过 |
+| `POST /api/auth/logout` | 撤销令牌/会话 | 已实现，撤销测试通过 |
+| `GET /api/chat/entry` | 解析当前用户默认智能体 | 已实现 |
+| `GET/POST/PATCH/DELETE /api/agents` | 智能体 CRUD | 已实现，所有权与内置不可变规则已测试 |
+| `PUT /api/agents/{agentId}/default` | 设为默认智能体 | 已实现 |
+| `DELETE /api/agents/default` | 清空默认设置 | 已实现 |
+| `GET /api/agents/{agentId}/avatar` | 获取智能体头像 | 已实现 |
+| `POST /api/agents/{agentId}/avatar` | 上传智能体头像 | 已实现 |
+| `POST /api/agents/{agentId}/preview/messages:stream` | 编辑预览 SSE 流式对话 | 已实现 |
+| `GET/POST /api/conversations` | 会话列表/创建 | 已实现，用户与智能体隔离已测试 |
+| `GET /api/conversations/{conversationId}` | 会话详情与消息 | 已实现 |
+| `POST /api/conversations/messages:stream` | 正式会话 SSE 流式对话 | 已实现 |
+| `POST /api/conversations/messages/{messageId}/interrupt` | 中断生成 | 已实现 |
+| `GET /api/knowledge/tree` | 资料树读取 | 已实现 |
+| `POST /api/knowledge/folders` | 创建文件夹 | 已实现 |
+| `POST /api/knowledge/upload` | 上传文件 | 已实现 |
+| `PATCH /api/knowledge/nodes/{nodeId}` | 重命名/移动 | 已实现 |
+| `DELETE /api/knowledge/nodes/{nodeId}` | 递归删除 | 已实现 |
+| `GET /api/knowledge/files/{nodeId}/preview` | 文件预览 | 已实现 |
 
-## 知识库与智能体工作流
+## 外部依赖
 
-智能体与会话的持久化基础已实现：`routers/agents.py`、`routers/conversations.py` 处理鉴权和 HTTP 契约；`services/agents.py`、`services/conversations.py` 执行业务规则；`repositories/` 集中 PostgreSQL 查询。`agents`、`user_preferences`、`agent_preset_questions`、`conversations`、`messages` 由迁移 `20260723_0002` 创建，内置 AI 管家为固定 UUID 的种子记录。
+**前端主要依赖**：React 18、React Router、React Query、Zustand、Ant Design 6、Ant Design X、Ant Design X Markdown、`@uiw/react-md-editor`、Vite、TypeScript、Tailwind CSS。
 
-`services/agent_runtime.py` 定义 LangGraph 条件工作流：身份守卫后先检查授权范围内的 ready 索引文件；知识库模式没有就绪资料时返回 `no_documents`，有资料时进入确定性资料操作选择并固定检索，检索后仅在有有效证据时准备模型输入，否则返回 `no_match`。模型文本不在 LangGraph 节点中聚合，而是在 SSE 生成器中逐块转换为 `answer_delta`，保持流式体验。`services/agent_strategy.py` 只识别真实资料目录查询，其他问题均选择混合检索，不再由大模型担任检索开关。`services/retrieval.py` 以向量与关键词候选的 RRF 融合、本地 reranker、分数阈值和每文件上下文限额产生最终来源；`repositories/knowledge_retrieval.py` 强制用户、智能体资料范围和就绪索引过滤，并持久化候选诊断。模型不会获得数据库、对象存储或任意工具访问能力，且前端只显示可验证阶段而不展示模型原始推理链。
+**后端主要依赖**：FastAPI、PyJWT、pwdlib（Argon2）、psycopg、pgvector、python-dotenv、Alembic、SQLAlchemy（仅迁移执行）、LangChain OpenAI、LangGraph、MinIO SDK、Redis、RQ、PyMuPDF、python-docx、FlagEmbedding（BGE-M3 + Reranker）。
 
-知识库请求由 `RuntimeStrategy.knowledge_operation` 指定稳定操作类型。`document_catalog` 通过 `repositories/knowledge.py` 返回每份可访问文件的真实代表分块和引用；`semantic_search` 保持 pgvector 内容召回。运行图只根据结构化操作执行注册能力，避免把用户问句硬编码为独立工作流。
-
-`services/agent_identity.py` 提供模型信息隐藏边界。LangGraph 在策略分析前执行 `guard_identity`；身份、能力和内部技术配置问题使用后端固定公开档案回复，完全绕过模型调用。普通回答也会注入不可覆盖的身份保密规则，并在服务端进行自我披露兜底检查。
-
-后续实现应将上述能力放入职责独立的模块（如 `retrieval/`、`agents/`、`workflows/` 与模型/存储 `integrations/`），避免把完整流程堆积到路由或单一服务中。
-
-## 外部依赖与验证
-
-- 前端主要依赖：React、React Router、React Query、Zustand、Ant Design 6、Ant Design X、Ant Design X Markdown、Vite、TypeScript 和 Tailwind CSS。
-- 后端主要依赖：FastAPI、PyJWT、pwdlib（Argon2）、psycopg、pgvector、python-dotenv、Alembic、SQLAlchemy（仅迁移执行）、MinIO SDK、Redis、RQ、PyMuPDF、python-docx 和 FlagEmbedding。后 3 项目前仅在文档 Worker 镜像中声明，尚未加载模型或执行解析。
-- CI：GitHub Actions 对后端运行 Python 编译检查，对前端运行 `pnpm install --frozen-lockfile` 与 `pnpm build`。
-
-本次本地核查已通过后端 Python 编译、Alembic 认证基线对齐、真实 PostgreSQL 认证集成、Redis、MinIO 私有 Bucket 写读删除和 Docker Linux 标准 RQ Worker 测试任务执行；浏览器端到端行为仍待验证。
+**基础设施**：PostgreSQL（pgvector 扩展）、Redis、MinIO、Docker Compose。

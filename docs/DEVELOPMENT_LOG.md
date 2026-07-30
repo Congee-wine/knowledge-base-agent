@@ -1,5 +1,48 @@
 # 开发日志
 
+## 2026-07-30：项目文档全面同步
+
+### 任务目标
+
+根据项目实际代码状态，全面更新项目文档，确保文档与代码实现一致。
+
+### 实现内容
+
+- 重写 `README.md`：更新已实现功能列表（认证、智能体、流式对话、知识库、RAG 检索、LangGraph 工作流、前后端工程化），更新技术栈（增加 BGE-M3、BGE-Reranker、LangGraph、RQ 队列），更新项目结构说明。
+- 重写 `docs/PROJECT_STATUS.md`：按实际完成状态重写已完成功能、正在进行、下一步计划、已知风险，补充数据库迁移记录表。
+- 重写 `docs/ARCHITECTURE.md`：补充完整模块职责说明、RAG 检索流程、LangGraph 工作流节点图、数据库表清单、接口列表，修正过时描述。
+- 更新 `docs/README.md`：修正文档索引说明。
+- 更新 `docs/features/agent-knowledge-platform/README.md`：更新文档状态和实现状态。
+- 更新 `docs/features/knowledge-retrieval/README.md`：更新文档状态、实现状态，补充已实现的检索流程。
+
+### 主要文件
+
+- `README.md`：项目入口文档
+- `docs/PROJECT_STATUS.md`：项目当前状态
+- `docs/ARCHITECTURE.md`：架构说明
+- `docs/README.md`：文档索引
+- `docs/features/agent-knowledge-platform/README.md`：智能体与知识库功能设计入口
+- `docs/features/knowledge-retrieval/README.md`：知识库检索功能设计入口
+
+### 技术方案
+
+无代码变更，仅文档同步。
+
+### 接口或数据变化
+
+无。
+
+### 验证情况
+
+- 文档内容基于实际代码文件逐一核实。
+- 已实现功能、测试覆盖、迁移记录均与代码仓库一致。
+
+### 遗留问题
+
+- 部分功能设计文档（`REQUIREMENTS.md`、`BACKEND_DESIGN.md` 等）内部细节可能仍有过时描述，后续可按需更新。
+
+---
+
 ## 2026-07-29：恢复 AI 回答的增量流式输出
 
 ### 任务目标
