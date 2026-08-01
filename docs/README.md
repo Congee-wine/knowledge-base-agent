@@ -10,5 +10,6 @@
 - [features/agent-knowledge-platform/](features/agent-knowledge-platform/README.md)：首期 AI 管家、智能体、会话与知识库功能设计。
 - [features/document-preview/](features/document-preview/README.md)：受认证文件预览功能设计。
 - [features/knowledge-retrieval/](features/knowledge-retrieval/README.md)：文本切分、`bge-m3` 向量化与资料范围检索设计。
+- [features/chat-stream-resumption/](features/chat-stream-resumption/README.md)：流式对话断线自动重连、事件回放与页面刷新恢复设计。
 
 更新这些文档时，不记录 `.env` 中的真实值、令牌、密码、连接字符串或其他敏感信息。
