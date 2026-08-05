@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { interruptStreamMessage, streamChat, type ChatStreamEvent } from '../../../api/chat'
 import type { ChatAgent, ChatMessage, Conversation } from '../../../types/chat'
 
@@ -8,6 +8,8 @@ type SendStreamInput = {
   conversationId: string | null
   onConversationCreated?: (conversationId: string) => void
   preview?: boolean
+  requestId?: string
+  resumeAssistantMessage?: ChatMessage
   useKnowledgeBase?: boolean
 }
 
@@ -119,9 +121,14 @@ export function useStreamingChat() {
     await Promise.all([...activeStreams.current.keys()].map(stopKey))
   }, [stopKey])
 
+  const disconnect = useCallback(() => {
+    for (const active of activeStreams.current.values()) active.controller.abort()
+    activeStreams.current.clear()
+  }, [])
+
   const reset = useCallback(() => setStore(initialStore), [])
 
-  useEffect(() => () => { void stop() }, [stop])
+  useEffect(() => () => { disconnect() }, [disconnect])
 
   const acknowledgePersistedPair = useCallback((requestId: string) => {
     setStore(current => {
@@ -135,7 +142,7 @@ export function useStreamingChat() {
           ...current.streams,
           [key]: {
             ...stream,
-            messages: stream.messages.filter(message => message.id !== pair.userMessageId && (message.id !== pair.assistantMessageId || Boolean(message.runSteps?.length))),
+            messages: stream.messages.filter(message => message.id !== pair.userMessageId),
             pendingPersistedPairs: stream.pendingPersistedPairs.filter(item => item.requestId !== requestId),
           },
         },
@@ -143,21 +150,21 @@ export function useStreamingChat() {
     })
   }, [])
 
-  const send = useCallback(async ({ agent, content, conversationId, onConversationCreated, preview = false, useKnowledgeBase = false }: SendStreamInput) => {
+  const send = useCallback(async ({ agent, content, conversationId, onConversationCreated, preview = false, requestId: providedRequestId, resumeAssistantMessage, useKnowledgeBase = false }: SendStreamInput) => {
     const key = conversationKey(conversationId, preview)
     if (activeStreams.current.has(key)) return
-    const requestId = createRequestId()
+    const requestId = providedRequestId ?? createRequestId()
     const mode = preview ? 'preview' : 'conversation'
     const active: ActiveStream = { assistantMessageId: null, controller: new AbortController(), key, mode, requestId, sequence: 0 }
     activeStreams.current.set(key, active)
     const createdAt = new Date().toISOString()
     const userMessage: ChatMessage = { citations: [], content, createdAt, generationStatus: 'complete', id: `local-user-${requestId}`, role: 'user' }
-    const assistantMessage: ChatMessage = { citations: [], content: '', createdAt, generationStatus: 'generating', id: `local-assistant-${requestId}`, role: 'assistant' }
+    const assistantMessage: ChatMessage = resumeAssistantMessage ?? { citations: [], content: '', createdAt, generationStatus: 'generating', id: `local-assistant-${requestId}`, role: 'assistant' }
     updateStream(key, current => ({
       ...current,
-      assistantMessageId: null,
+      assistantMessageId: resumeAssistantMessage?.id ?? null,
       error: null,
-      messages: [...current.messages, userMessage, assistantMessage],
+      messages: resumeAssistantMessage ? [assistantMessage] : [...current.messages, userMessage, assistantMessage],
       sending: true,
       statusText: '正在生成回答',
       userMessageId: null,
@@ -166,10 +173,12 @@ export function useStreamingChat() {
       ? `/api/agents/${encodeURIComponent(agent.id)}/preview/messages:stream`
       : `/api/conversations/messages:stream?agentId=${encodeURIComponent(agent.id)}${conversationId ? `&conversationId=${encodeURIComponent(conversationId)}` : ''}`
     const history = (storeRef.current.streams[key] ?? initialStream).messages
-    const body = preview ? { content, draftAgent: agent, history: history.map(message => ({ content: message.content, role: message.role })), requestId } : { content, requestId, useKnowledgeBase }
+    const body: Record<string, unknown> = preview ? { content, draftAgent: agent, history: history.map(message => ({ content: message.content, role: message.role })), requestId } : { content, requestId, useKnowledgeBase }
 
     try {
-      await streamChat({ body, path, signal: active.controller.signal, onEvent: event => {
+      let attempts = 0
+      let reachedTerminalEvent = false
+      const onEvent = (event: ChatStreamEvent) => {
         if (event.requestId !== requestId || event.mode !== mode || event.sequence <= active.sequence) return
         active.sequence = event.sequence
         if (event.type === 'message_start' && event.mode === 'conversation') {
@@ -201,9 +210,23 @@ export function useStreamingChat() {
         }
         updateStream(active.key, current => applyEvent(current, event, active))
         if (event.type === 'message_end' || event.type === 'error') {
+          reachedTerminalEvent = true
           if (activeStreams.current.get(active.key)?.requestId === requestId) activeStreams.current.delete(active.key)
         }
-      } })
+      }
+      while (!reachedTerminalEvent) {
+        try {
+          await streamChat({ body: { ...body, afterSequence: active.sequence }, path, signal: active.controller.signal, onEvent })
+          if (!reachedTerminalEvent) throw new Error('流式连接意外关闭')
+        } catch (error) {
+          if (active.controller.signal.aborted) return
+          if (preview || attempts >= 5) throw error
+          const delay = 2 ** attempts * 1000
+          attempts += 1
+          updateStream(active.key, current => ({ ...current, statusText: '连接中断，正在恢复回答' }))
+          await new Promise<void>(resolve => window.setTimeout(resolve, delay))
+        }
+      }
     } catch (error) {
       if (active.controller.signal.aborted) return
       const text = error instanceof Error ? error.message : '发送失败，请稍后重试'
@@ -219,10 +242,13 @@ export function useStreamingChat() {
   }, [updateStream])
 
   const getStream = useCallback((conversationId: string | null) => store.streams[conversationKey(conversationId, false)] ?? initialStream, [store.streams])
-  const pendingPersistedPairs = Object.values(store.streams).flatMap(stream => stream.pendingPersistedPairs)
+  const pendingPersistedPairs = useMemo(
+    () => Object.values(store.streams).flatMap(stream => stream.pendingPersistedPairs),
+    [store.streams],
+  )
   const legacy = store.streams[store.lastKey] ?? initialStream
 
-  return { ...legacy, acknowledgePersistedPair, getStream, pendingPersistedPairs, reset, send, stop }
+  return { ...legacy, acknowledgePersistedPair, disconnect, getStream, pendingPersistedPairs, reset, send, stop }
 }
 
 function applyEvent(current: ConversationStream, event: ChatStreamEvent, active: ActiveStream): ConversationStream {

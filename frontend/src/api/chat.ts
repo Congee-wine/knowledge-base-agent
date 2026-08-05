@@ -23,8 +23,8 @@ export type ChatStreamEvent =
   | (StreamEventBase & { type: 'status'; stage: ChatRunStage; text: string })
   | (StreamEventBase & { type: 'sources'; items: ChatCitation[] })
   | (StreamEventBase & { type: 'answer_delta'; content: string })
-  | ({ type: 'message_end'; mode: 'conversation'; messageId: string; generationStatus: 'complete' | 'interrupted' } & Omit<StreamEventBase, 'mode'>)
-  | ({ type: 'message_end'; mode: 'preview'; generationStatus: 'complete' | 'interrupted' } & Omit<StreamEventBase, 'mode'>)
+  | ({ type: 'message_end'; mode: 'conversation'; messageId: string; generationStatus: 'complete' | 'interrupted' | 'timed_out' } & Omit<StreamEventBase, 'mode'>)
+  | ({ type: 'message_end'; mode: 'preview'; generationStatus: 'complete' | 'interrupted' | 'timed_out' } & Omit<StreamEventBase, 'mode'>)
   | (StreamEventBase & { type: 'error'; code: string; message: string; retryable: boolean })
 
 type StreamOptions = {
@@ -95,9 +95,10 @@ if (!['analyzing', 'clarifying', 'retrieving', 'no_documents', 'no_match', 'retr
   }
   if (type === 'answer_delta') return { type, mode, requestId, sequence, content: readString(event, 'content') }
   if (type === 'message_end') {
-    if (event.generationStatus !== 'complete' && event.generationStatus !== 'interrupted') throw new Error('流式结束状态无效')
-    if (mode === 'preview') return { type, mode, requestId, sequence, generationStatus: event.generationStatus }
-    return { type, mode, requestId, sequence, messageId: readRequiredString(event, 'messageId'), generationStatus: event.generationStatus }
+    if (!['complete', 'interrupted', 'timed_out'].includes(String(event.generationStatus))) throw new Error('流式结束状态无效')
+    const generationStatus = event.generationStatus as 'complete' | 'interrupted' | 'timed_out'
+    if (mode === 'preview') return { type, mode, requestId, sequence, generationStatus }
+    return { type, mode, requestId, sequence, messageId: readRequiredString(event, 'messageId'), generationStatus }
   }
   if (type === 'error') {
     if (typeof event.retryable !== 'boolean') throw new Error('流式错误事件 retryable 无效')

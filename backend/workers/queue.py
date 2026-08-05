@@ -9,6 +9,7 @@ from config import REDIS_URL
 DOCUMENT_PROCESSING_QUEUE = "document-processing"
 EMBEDDING_QUEUE = "embedding"
 RETRIEVAL_QUEUE = "retrieval"
+CHAT_GENERATION_QUEUE = "chat-generation"
 
 
 def create_redis_connection() -> Redis:
@@ -25,3 +26,7 @@ def get_embedding_queue() -> Queue:
 
 def get_retrieval_queue() -> Queue:
     return Queue(RETRIEVAL_QUEUE, connection=create_redis_connection())
+
+
+def get_chat_generation_queue() -> Queue:
+    return Queue(CHAT_GENERATION_QUEUE, connection=create_redis_connection())

@@ -19,14 +19,14 @@ from schemas.conversations import (
 )
 from schemas.streaming import InterruptStreamRequest, StreamRequest
 from services import conversations as conversation_service
-from services.errors import stream_resume_unavailable
 
 
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
 
 
 def _sse(events, request_id: str, mode: str):
-    for sequence, payload in enumerate(events, start=1):
+    for fallback_sequence, payload in enumerate(events, start=1):
+        sequence = int(payload.get("sequence", fallback_sequence))
         data = {"requestId": request_id, "sequence": sequence, "mode": mode, **payload}
         yield f"id: {request_id}:{sequence}\nevent: {data['type']}\ndata: {json.dumps(data)}\n\n"
 
@@ -74,9 +74,7 @@ def stream_message(
     conversation_id: str | None = Query(default=None, alias="conversationId"),
     current_user: UserResponse = Depends(get_current_user),
 ) -> StreamingResponse:
-    if data.after_sequence > 0:
-        raise stream_resume_unavailable()
-    events = conversation_service.stream_message(current_user.id, agent_id, conversation_id, data.content, data.request_id, data.use_knowledge_base)
+    events = conversation_service.open_stream_subscription(current_user.id, agent_id, conversation_id, data.content, data.request_id, data.after_sequence, data.use_knowledge_base)
     return StreamingResponse(_sse(events, data.request_id, "conversation"), media_type="text/event-stream")
 
 

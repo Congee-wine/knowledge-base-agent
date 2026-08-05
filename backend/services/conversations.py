@@ -6,12 +6,14 @@ from typing import Any
 
 from repositories import agents as agent_repository
 from repositories import conversations as conversation_repository
+from repositories import stream_events, stream_runs as stream_run_repository
 from schemas.agents import AgentResponse
 from schemas.conversations import ConversationDetailResponse, ConversationResponse, EchoMessageResponse, MessageResponse
 from services.agents import get_agent
 from services.errors import not_found
 from services.agent_runtime import ModelMessage, stream_with_retrieval
 from integrations.deepseek import DeepSeekError
+from workers.queue import get_chat_generation_queue
 
 
 logger = logging.getLogger(__name__)
@@ -33,7 +35,8 @@ def get_conversation(user_id: str, conversation_id: str) -> ConversationDetailRe
     if conversation is None:
         raise not_found()
     agent = get_agent(user_id, str(conversation["agent_id"]))
-    messages = [_message_response(row) for row in conversation_repository.list_messages(str(conversation["id"]))]
+    runs = stream_run_repository.list_for_conversation(str(conversation["id"]))
+    messages = [_message_response(row, runs.get(str(row["id"]))) for row in conversation_repository.list_messages(str(conversation["id"]))]
     return ConversationDetailResponse(**_conversation_response(conversation).model_dump(), agent=agent, messages=messages)
 
 
@@ -109,6 +112,18 @@ def stream_message(user_id: str, agent_id: str, conversation_id: str | None, con
     return events()
 
 
+def open_stream_subscription(user_id: str, agent_id: str, conversation_id: str | None, content: str, request_id: str, after_sequence: int, use_knowledge_base: bool) -> Iterator[dict[str, object]]:
+    _ensure_active_agent(user_id, agent_id)
+    result = conversation_repository.start_stream_generation(user_id, agent_id, conversation_id, content, request_id)
+    if result is None:
+        raise not_found()
+    conversation, _, assistant_message, _ = result
+    run, created = stream_run_repository.create_or_get(request_id, user_id, str(conversation["id"]), str(assistant_message["id"]), use_knowledge_base)
+    if created:
+        get_chat_generation_queue().enqueue("workers.tasks.process_chat_generation", str(run["id"]), bool(run["use_knowledge_base"]), job_timeout=330)
+    return stream_events.subscribe(str(run["id"]), after_sequence)
+
+
 def interrupt_stream_message(user_id: str, assistant_message_id: str, content: str) -> MessageResponse:
     message = conversation_repository.interrupt_stream_generation_for_user(user_id, assistant_message_id, content)
     if message is None:
@@ -137,8 +152,10 @@ def _conversation_response(row: Mapping[str, Any]) -> ConversationResponse:
     )
 
 
-def _message_response(row: Mapping[str, Any]) -> MessageResponse:
+def _message_response(row: Mapping[str, Any], run: Mapping[str, Any] | None = None) -> MessageResponse:
     return MessageResponse(
         id=str(row["id"]), role=row["role"], content=row["content"],
         generation_status=row["generation_status"], created_at=row["created_at"], citations=row.get("citations_json") or [],
+        request_id=str(run["request_id"]) if run is not None else None,
+        last_sequence=int(run["last_sequence"]) if run is not None else None,
     )

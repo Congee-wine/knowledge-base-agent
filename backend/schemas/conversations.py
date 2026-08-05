@@ -30,9 +30,11 @@ class MessageResponse(BaseModel):
     id: str
     role: Literal["user", "assistant"]
     content: str
-    generation_status: Literal["generating", "complete", "interrupted", "failed"] = Field(serialization_alias="generationStatus")
+    generation_status: Literal["generating", "complete", "interrupted", "failed", "timed_out"] = Field(serialization_alias="generationStatus")
     created_at: datetime = Field(serialization_alias="createdAt")
     citations: list[dict[str, object]] = Field(default_factory=list)
+    request_id: str | None = Field(default=None, serialization_alias="requestId")
+    last_sequence: int | None = Field(default=None, serialization_alias="lastSequence")
 
 
 class CreateMessageRequest(BaseModel):

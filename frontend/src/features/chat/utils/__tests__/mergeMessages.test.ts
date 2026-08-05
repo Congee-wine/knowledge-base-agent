@@ -31,6 +31,13 @@ describe('mergeMessages', () => {
     expect(result[0].content).toBe('local streaming')
   })
 
+  it('keeps a completed local answer when a stale server response is still generating', () => {
+    const server = [msg('1', 'assistant', '', 'generating')]
+    const local = [msg('1', 'assistant', 'local final answer')]
+    const result = mergeMessages(server, local, new Set(['1']))
+    expect(result[0]).toMatchObject({ content: 'local final answer', generationStatus: 'complete' })
+  })
+
   it('keeps streaming content when the local assistant also has run steps', () => {
     const server = [msg('1', 'assistant', 'server empty', 'generating')]
     const local = [{

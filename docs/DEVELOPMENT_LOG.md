@@ -1,5 +1,60 @@
 # 开发日志
 
+## 2026-08-01：实现对话断线续流基础链路
+
+### 任务目标
+
+将模型生成与浏览器 SSE 连接解耦，支持断线后的事件回放、有限自动重连和页面刷新自动恢复。
+
+### 实现内容
+
+- 新增 `stream_runs` 运行记录和 `timed_out` 消息终态，并执行数据库迁移 `20260801_0013`。
+- 新增 Redis Streams 事件发布、回放和终态 15 分钟过期机制。
+- 新增 RQ `chat-generation` 队列与独立 Worker；生成任务不再依附于 SSE 请求，服务端按 5 分钟配置检查超时。
+- 正式会话流接口启用 `afterSequence`，按同一 `requestId` 订阅已有任务事件。
+- 前端按事件序号去重，在异常断开后按 1/2/4/8/16 秒进行最多五次重连；刷新会话页时自动恢复生成中消息的订阅。
+
+### 主要文件
+
+- `backend/migrations/versions/20260801_0013_stream_runs.py`：生成任务数据结构与消息终态迁移。
+- `backend/repositories/stream_runs.py`、`stream_events.py`：任务持久化和 Redis Streams 访问。
+- `backend/services/stream_runs.py`：独立生成任务的事件发布、完成/失败/超时处理。
+- `backend/services/conversations.py`、`routers/conversations.py`：创建或复用任务并订阅 SSE。
+- `backend/workers/`、`docker-compose.infrastructure.yml`：聊天生成队列、Worker 和容器编排。
+- `frontend/src/features/chat/hooks/useStreamingChat.ts`、`frontend/src/pages/ChatPage.tsx`：自动重连与刷新恢复。
+
+### 技术方案
+
+Redis Streams 保存可回放事件，PostgreSQL 保存任务和最终消息事实；RQ Worker 承担与 SSE 客户端生命周期解耦的模型生成。
+
+### 接口或数据变化
+
+- 新增 `stream_runs` 表和 `timed_out` 消息状态。
+- `POST /api/conversations/messages:stream` 启用 `afterSequence` 续流。
+- 会话消息响应新增可选 `requestId`、`lastSequence` 字段。
+
+### 验证情况
+
+- 通过：`alembic upgrade head`。
+- 通过：`python -m unittest tests.test_conversations_service tests.test_streaming_protocol`（12 项）。
+- 通过：`python -m py_compile`（新增/修改后端模块）。
+- 待执行：Redis Worker 实际运行、浏览器断网/刷新、5 分钟超时和 15 分钟缓存过期端到端验证。
+
+### 运行环境更正
+
+- 聊天 Worker 复用 `workers.tasks`，其模块导入链包含 MinIO 对象存储适配；为避免容器启动时缺少 `minio`，已在 `backend/requirements.chat-worker.txt` 中补充既有项目依赖。重建聊天 Worker 后生效。
+- 修正 `useStreamingChat` 返回的待持久化消息对数组在每次渲染重新创建的问题；该问题会反复使 React Query 的会话详情和列表查询失效，表现为浏览器持续发起 200 状态的 GET 请求并卡住页面。
+- 为刷新恢复增加按 `requestId` 的单次自动恢复保护。会话详情的旧 `generating` 缓存不能再反复启动 Redis 事件回放；网络中断后的连接恢复仍由同一条流的有限重连策略负责。
+- 将页面卸载/切换智能体时的本地 SSE 断开与用户主动“停止生成”拆分；前者只终止浏览器请求，不能调用中断接口取消后台生成任务，确保首个输出前离开并返回仍可恢复。
+- 修正完成事件后的消息事实来源切换：当前页面保留已经收到的完整本地助手回答并保持其显示优先级，旧会话详情请求返回的 `generating` 空消息不能再造成“正在生成回答”闪回；页面重新加载后仍以服务端历史为事实来源。
+- 优化流式正文发布：Worker 将连续 `answer_delta` 聚合至 16 个字符或最长 60ms 后再写 Redis Streams；`stream_runs.last_sequence` 改为最多每秒 checkpoint，结束/失败/中断事件仍强制同步写入。该调整减少 Redis 事件、数据库写入和前端 Markdown 重渲染次数，同时保留事件有序回放。
+- 进一步移除原始模型片段热路径上的数据库与 Redis 连接开销：中断状态最多每 250ms 查询一次，Redis Streams 发布/订阅在各进程内复用连接客户端，避免每个片段都建立连接。
+
+### 遗留问题
+
+- RQ Job 被外部强制杀死时需要额外的超时清理巡检，当前 5 分钟检查发生在模型事件消费边界。
+- 未实现重新生成，符合本次已确认范围。
+
 ## 2026-08-01：确认对话断线续流需求并完成设计
 
 ### 任务目标

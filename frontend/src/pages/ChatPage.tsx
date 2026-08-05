@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { HistoryOutlined, PlusCircleOutlined } from '@ant-design/icons'
 import { Alert, Button, Result, Spin } from 'antd'
 import { useQueryClient } from '@tanstack/react-query'
@@ -29,16 +29,17 @@ export function ChatPage() {
   const conversationsQuery = useConversations(resolvedAgent?.id)
   const conversationDetailQuery = useConversationDetail(selectedConversationId)
   const streaming = useStreamingChat()
+  const recoveredRequestIds = useRef(new Set<string>())
   const stream = streaming.getStream(selectedConversationId)
   const queryClient = useQueryClient()
   const { acknowledgePersistedPair, pendingPersistedPairs } = streaming
 
   useEffect(() => {
-    void streaming.stop()
+    streaming.disconnect()
     setSelectedConversationId(null)
     setComposerValue('')
     streaming.reset()
-  }, [resolvedAgent?.id, streaming.reset, streaming.stop])
+  }, [resolvedAgent?.id, streaming.disconnect, streaming.reset])
 
   useEffect(() => {
     if (!resolvedAgent?.id) return
@@ -62,10 +63,30 @@ export function ChatPage() {
     }
   }, [acknowledgePersistedPair, conversationDetailQuery.data?.messages, pendingPersistedPairs, selectedConversationId])
 
+  useEffect(() => {
+    if (!resolvedAgent || !selectedConversationId || stream.sending) return
+    const messages = conversationDetailQuery.data?.messages
+    const assistantIndex = messages?.findIndex(message => message.generationStatus === 'generating') ?? -1
+    if (assistantIndex < 1) return
+    const assistantMessage = messages![assistantIndex]
+    const userMessage = messages![assistantIndex - 1]
+    if (userMessage.role !== 'user' || !assistantMessage.requestId) return
+    if (recoveredRequestIds.current.has(assistantMessage.requestId)) return
+    recoveredRequestIds.current.add(assistantMessage.requestId)
+    void streaming.send({
+      agent: resolvedAgent,
+      content: userMessage.content,
+      conversationId: selectedConversationId,
+      requestId: assistantMessage.requestId,
+      resumeAssistantMessage: assistantMessage,
+    })
+  }, [conversationDetailQuery.data?.messages, resolvedAgent, selectedConversationId, stream.sending, streaming.send])
+
   const localAssistantPriorityIds = useMemo(() => {
     const ids = new Set<string>()
     for (const message of stream.messages) {
-      if (message.role === 'assistant' && (stream.sending || pendingPersistedPairs.some(pair => pair.assistantMessageId === message.id))) {
+      const hasCompletedLocalAnswer = message.generationStatus !== 'generating' && message.content.length > 0
+      if (message.role === 'assistant' && (stream.sending || hasCompletedLocalAnswer || pendingPersistedPairs.some(pair => pair.assistantMessageId === message.id))) {
         ids.add(message.id)
       }
     }

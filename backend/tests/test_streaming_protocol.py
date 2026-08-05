@@ -82,13 +82,14 @@ class StreamingProtocolTests(unittest.TestCase):
         complete_generation.assert_called_once_with("assistant-1", "answer", [])
         self.assertEqual(events[-1]["type"], "message_end")
 
-    def test_resume_request_is_rejected_before_stream_creation(self) -> None:
-        request = SimpleNamespace(after_sequence=1, content="hello", request_id="request-1")
+    @patch("routers.conversations.conversation_service.open_stream_subscription", return_value=iter([]))
+    def test_resume_request_is_forwarded_to_subscription(self, open_subscription: object) -> None:
+        request = SimpleNamespace(after_sequence=1, content="hello", request_id="request-1", use_knowledge_base=False)
 
-        with self.assertRaises(DomainError) as captured:
-            stream_message_route(request, "agent-1", None, SimpleNamespace(id="user-1"))
+        response = stream_message_route(request, "agent-1", None, SimpleNamespace(id="user-1"))
 
-        self.assertEqual(captured.exception.code, "STREAM_RESUME_UNAVAILABLE")
+        open_subscription.assert_called_once_with("user-1", "agent-1", None, "hello", "request-1", 1, False)
+        self.assertEqual(response.media_type, "text/event-stream")
 
     @patch("services.conversations.conversation_repository.interrupt_stream_generation_for_user")
     def test_interrupt_persists_the_partial_answer(self, interrupt_generation: object) -> None:

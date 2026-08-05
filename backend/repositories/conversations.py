@@ -295,8 +295,8 @@ def interrupt_stream_generation_for_user(
             return message
 
 
-def fail_stream_generation(assistant_message_id: str, content: str) -> Mapping[str, Any]:
-    return _update_stream_status(assistant_message_id, content, "failed")
+def fail_stream_generation(assistant_message_id: str, content: str, status: str = "failed") -> Mapping[str, Any]:
+    return _update_stream_status(assistant_message_id, content, status)
 
 
 def _update_stream_status(

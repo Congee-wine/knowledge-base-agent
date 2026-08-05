@@ -154,3 +154,8 @@ def embed_query_text(content: str) -> list[float]:
 def rerank_query_candidates(query: str, passages: list[str]) -> list[float]:
     """Score query-passage pairs in the embedding Worker that owns local models."""
     return rerank(query, passages)
+
+
+def process_chat_generation(stream_run_id: str, use_knowledge_base: bool) -> None:
+    from services.stream_runs import execute_stream_run
+    execute_stream_run(stream_run_id, use_knowledge_base)

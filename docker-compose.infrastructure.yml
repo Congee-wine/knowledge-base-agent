@@ -97,6 +97,24 @@ services:
       - worker-model-cache:/models/bge
     restart: unless-stopped
 
+  chat-generation-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.chat-worker
+    container_name: knowledge-base-agent-chat-generation-worker
+    command: python -c "from workers.runner import run_chat_generation_worker; run_chat_generation_worker()"
+    env_file:
+      - ./backend/.env
+      - ./backend/.env.worker
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    restart: unless-stopped
+
 volumes:
   redis-data:
   minio-data:

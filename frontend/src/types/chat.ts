@@ -28,10 +28,12 @@ export type ChatMessage = {
   id: string
   role: 'user' | 'assistant'
   content: string
-  generationStatus: 'generating' | 'complete' | 'interrupted' | 'failed'
+  generationStatus: 'generating' | 'complete' | 'interrupted' | 'failed' | 'timed_out'
   createdAt: string
   citations?: ChatCitation[]
   runSteps?: Array<{ id: string; status: 'loading' | 'success' | 'error'; title: string }>
+  requestId?: string | null
+  lastSequence?: number | null
 }
 
 export type ChatCitation = {
