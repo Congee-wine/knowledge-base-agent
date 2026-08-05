@@ -4210,3 +4210,39 @@ Ant Design X 仅承担 AI 交互展示，避免与业务接口、鉴权和状态
 ### 遗留问题
 
 - 无新增问题。
+
+## 2026-08-05：优化聊天回答阅读体验
+
+### 任务目标
+
+改善聊天回答区的正文可读性，降低内容区滚动条的视觉干扰，并扩大可阅读内容宽度。
+
+### 实现内容
+
+- 将正式聊天消息列表和输入区的最大宽度从 810px 调整为 1080px，并相应调整桌面端定位。
+- 为流式 Markdown 回答增加 17px 正文字号、1.82 行高，以及标题、强调文字、列表、引用、代码块和表格的层级样式。
+- 将会话列表滚动条改为默认透明、悬停时才显示的窄滚动条，避免其紧贴正文时过于显眼。
+
+### 主要文件
+
+- `frontend/src/features/chat/components/ChatMessageList.tsx`：为聊天 Markdown 标记专用样式类，并扩大默认消息列表容器。
+- `frontend/src/features/chat/components/ChatComposer.tsx`：与消息列表保持相同的阅读宽度。
+- `frontend/src/style.css`：定义聊天正文排版层级及低干扰滚动条样式。
+- `docs/PROJECT_STATUS.md`：同步前端视觉验收状态。
+
+### 技术方案
+
+仅在聊天功能模块的展示层增加作用域明确的 CSS，不改变 SSE 协议、消息数据、Markdown 内容或引用逻辑；因此既能获得不同级别标题和正文的排版，也不会影响知识库预览等其他 Markdown 场景。
+
+### 接口或数据变化
+
+无。
+
+### 验证情况
+
+- 已尝试：`pnpm exec tsc --noEmit --pretty false` 与 `pnpm test -- --run src/features/chat/components/__tests__/ChatMessageList.test.tsx`。
+- 未完成：两项命令均在当前受限环境中超过 60 秒后超时；类型检查同时输出 pnpm 配置文件读取权限警告。尚未完成浏览器视觉验收。
+
+### 遗留问题
+
+- 需要在实际浏览器中确认宽屏、窄屏及含长表格/代码块回答的显示效果。

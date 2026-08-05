@@ -63,7 +63,7 @@ function CitationList({ message }: { message: ChatMessage }) {
 }
 
 export function ChatMessageList({
-  className = 'w-full max-w-[810px] px-8 pt-3 lg:ml-[18%] lg:px-0',
+  className = 'chat-message-list w-full max-w-[1080px] px-6 pt-4 lg:ml-[14%] lg:px-0',
   messages,
   pendingAssistant,
   scrollable = false,
@@ -87,7 +87,7 @@ export function ChatMessageList({
       content: item.role === 'assistant'
         ? <>
             <ChatRunSummary steps={getRunSteps(item, statusText)} />
-            {item.content && <XMarkdown content={item.content} streaming={{ hasNextChunk: item.generationStatus === 'generating', tail: true }} />}
+            {item.content && <XMarkdown className="chat-markdown" content={item.content} streaming={{ hasNextChunk: item.generationStatus === 'generating', tail: true }} />}
             <CitationList message={item} />
           </>
         : item.content,

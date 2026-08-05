@@ -56,7 +56,7 @@ export function ChatComposerSurface({ agent, value, sending, onChange, onStop, o
 
 export function ChatComposer(props: Props) {
   return (
-    <div className="mt-auto w-full max-w-[810px] px-8 pb-2 pt-6 lg:ml-[18%] lg:px-0">
+    <div className="chat-composer mt-auto w-full max-w-[1080px] px-6 pb-2 pt-6 lg:ml-[14%] lg:px-0">
       <ChatComposerSurface {...props} />
       <p className="mt-2 text-center text-xs text-slate-300">内容由AI生成，仅供参考</p>
     </div>
