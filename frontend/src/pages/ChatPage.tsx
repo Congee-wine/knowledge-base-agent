@@ -134,7 +134,10 @@ export function ChatPage() {
   }
 
   return (
-    <section className="flex h-full min-h-[680px] flex-col overflow-hidden bg-white" aria-label={`${agent.name} 聊天页面`}>
+    <section
+      className={`chat-page flex h-full min-h-[680px] flex-col overflow-hidden bg-white transition-[padding] duration-300 ${historyOpen ? 'chat-page--history-open lg:pr-[260px]' : ''}`}
+      aria-label={`${agent.name} 聊天页面`}
+    >
       <header className="flex h-[70px] shrink-0 items-center justify-end gap-5 px-8">
         <Button className="!px-0 !font-medium !text-slate-700" icon={<PlusCircleOutlined />} type="text" onClick={createNewConversation}>新会话</Button>
         <Button className="!px-0 !font-medium !text-slate-700" icon={<HistoryOutlined />} type="text" onClick={() => setHistoryOpen(true)}>历史记录</Button>

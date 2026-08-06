@@ -16,7 +16,7 @@ export function ChatWelcome({ agent, onPromptClick }: Props) {
   }
 
   return (
-    <div className="w-full max-w-[810px] px-8 pt-1 lg:ml-[18%] lg:px-0">
+    <div className="chat-welcome w-full max-w-[810px] px-8 pt-1 lg:ml-[18%] lg:px-0">
       <Welcome
         className="ai-manager-welcome"
         description={

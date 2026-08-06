@@ -251,6 +251,17 @@ html, body, #root { min-height: 100%; margin: 0; }
 .chat-citations > summary { font-size: 13px; }
 .chat-citations__item { font-size: 13px; line-height: 22px; }
 
+@media (min-width: 1024px) {
+  .chat-page--history-open .chat-message-list,
+  .chat-page--history-open .chat-composer,
+  .chat-page--history-open .chat-welcome,
+  .chat-page--history-open .chat-personal-agent-welcome {
+    max-width: 900px !important;
+    margin-left: clamp(24px, 8vw, 128px) !important;
+    margin-right: 0 !important;
+  }
+}
+
 .knowledge-page { box-sizing: border-box; display: flex; height: 100%; min-height: 0; flex-direction: column; overflow: hidden; background: #f6f7f9; padding: 44px 24px 48px; color: #4b5c73; }
 .knowledge-hero { min-height: 166px; flex: 0 0 auto; border-radius: 13px; background: #fff; padding: 35px 17px 15px; }
 .knowledge-hero__title { display: flex; align-items: center; gap: 18px; padding-left: 15px; }
