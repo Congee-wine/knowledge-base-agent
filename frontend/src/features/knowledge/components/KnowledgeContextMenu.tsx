@@ -5,6 +5,7 @@ import {
   EyeOutlined,
   FolderOpenOutlined,
   FormOutlined,
+  ReloadOutlined,
   SwapOutlined,
 } from '@ant-design/icons'
 import type { ReactNode } from 'react'
@@ -25,6 +26,7 @@ const menuEntries: MenuEntry[] = [
   { id: 'rename', label: '重命名', icon: <FormOutlined /> },
   { id: 'move', label: '移动到', icon: <SwapOutlined /> },
   { id: 'download', label: '下载', icon: <DownloadOutlined /> },
+  { id: 'retry-embedding', label: '重新向量化', icon: <ReloadOutlined /> },
   { id: 'delete', label: '删除', icon: <DeleteOutlined />, destructive: true },
 ]
 

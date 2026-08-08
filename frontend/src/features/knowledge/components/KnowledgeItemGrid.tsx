@@ -30,8 +30,9 @@ export function KnowledgeItemGrid({ items, selectedIds, onSelectionChange, onCon
     {items.map(item => {
       const selected = selectedIds.includes(item.id)
       const isProcessing = item.processingStatus === 'uploaded' || item.processingStatus === 'processing'
+      const isEmbeddingFailed = item.processingStatus === 'ready' && item.indexStatus === 'failed'
       return <article
-        className={`knowledge-item ${selected ? 'is-selected' : ''} ${isProcessing ? 'is-processing' : ''}`}
+        className={`knowledge-item ${selected ? 'is-selected' : ''} ${isProcessing ? 'is-processing' : ''} ${isEmbeddingFailed ? 'is-embedding-failed' : ''}`}
         key={item.id}
         onContextMenu={event => {
           event.preventDefault()
@@ -53,6 +54,7 @@ export function KnowledgeItemGrid({ items, selectedIds, onSelectionChange, onCon
         {isProcessing && item.processingStatus && <span className={`knowledge-item__status is-${item.processingStatus}`}>
           {processingStatusLabels[item.processingStatus]}
         </span>}
+        {isEmbeddingFailed && <span className="knowledge-item__status is-failed">向量化失败</span>}
         {item.size && <span className="knowledge-item__size">{item.size}</span>}
       </article>
     })}

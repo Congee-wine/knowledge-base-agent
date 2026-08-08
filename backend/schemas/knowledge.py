@@ -25,6 +25,7 @@ class KnowledgeNodeResponse(BaseModel):
     node_type: Literal["folder", "file"] = Field(serialization_alias="nodeType")
     name: str
     status: Literal["uploaded", "processing", "ready", "failed"] | None = None
+    index_status: Literal["pending", "processing", "ready", "failed"] | None = Field(default=None, serialization_alias="indexStatus")
     mime_type: str | None = Field(default=None, serialization_alias="mimeType")
     byte_size: int | None = Field(default=None, serialization_alias="byteSize")
     created_at: datetime = Field(serialization_alias="createdAt")

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Empty, Input, Modal, Radio, Result, Spin, message } from 'antd'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { createKnowledgeFolder, deleteKnowledgeNode, getKnowledgeTree, moveKnowledgeNode, renameKnowledgeNode, uploadKnowledgeFile, type KnowledgeNode } from '../api/knowledge'
+import { createKnowledgeFolder, deleteKnowledgeNode, getKnowledgeTree, moveKnowledgeNode, renameKnowledgeNode, retryEmbedding, uploadKnowledgeFile, type KnowledgeNode } from '../api/knowledge'
 import { KnowledgeActionMenus } from '../features/knowledge/components/KnowledgeActionMenus'
 import { KnowledgeContextMenu } from '../features/knowledge/components/KnowledgeContextMenu'
 import { KnowledgeItemGrid } from '../features/knowledge/components/KnowledgeItemGrid'
@@ -13,11 +13,17 @@ import type { KnowledgeActionId, KnowledgeItem } from '../features/knowledge/typ
 import { routes } from '../routes/paths'
 
 function flattenNodes(nodes: KnowledgeNode[]): KnowledgeItem[] {
-  return nodes.flatMap(node => [{
-    id: node.id, parentId: node.parentId ?? undefined, name: node.name,
-    kind: node.nodeType === 'folder' ? 'folder' : getFileKind(node),
-    processingStatus: node.status ?? undefined,
-  }, ...flattenNodes(node.children)])
+  return nodes.flatMap(node => {
+    const processingStatus = node.status ?? undefined
+    const indexStatus = node.indexStatus ?? undefined
+    const isEmbeddingFailed = processingStatus === 'ready' && indexStatus === 'failed'
+    return [{
+      id: node.id, parentId: node.parentId ?? undefined, name: node.name,
+      kind: node.nodeType === 'folder' ? 'folder' : getFileKind(node),
+      processingStatus, indexStatus,
+      ...(isEmbeddingFailed ? { actions: ['preview', 'retry-embedding', 'delete'] as KnowledgeActionId[] } : {}),
+    }, ...flattenNodes(node.children)]
+  })
 }
 
 function getFileKind(node: KnowledgeNode): KnowledgeItem['kind'] {
@@ -53,21 +59,22 @@ export function KnowledgeBasePage() {
   const renameMutation = useMutation({ mutationFn: () => renameKnowledgeNode(renameItem!.id, renameValue.trim()), onSuccess: () => { void invalidateTree(); setRenameItem(null); message.success('已重命名') }, onError: () => message.error('重命名失败，请检查名称是否重复') })
   const moveMutation = useMutation({ mutationFn: async () => Promise.all(moveItemIds.map(id => moveKnowledgeNode(id, targetFolderId))), onSuccess: () => { void invalidateTree(); setSelectedIds([]); setMoveItemIds([]); setMoveModalOpen(false); message.success('已移动') }, onError: () => message.error('移动失败；目标不能是自身或其子文件夹，且不能同名') })
   const deleteMutation = useMutation({ mutationFn: async (ids: string[]) => Promise.all(ids.map(deleteKnowledgeNode)), onSuccess: () => { void invalidateTree(); setSelectedIds([]); message.success('已删除') }, onError: () => message.error('删除失败，请重试') })
+  const retryEmbeddingMutation = useMutation({ mutationFn: (nodeId: string) => retryEmbedding(nodeId), onSuccess: () => { void invalidateTree(); message.success('已重新提交向量化任务') }, onError: () => message.error('重试失败，请稍后再试') })
   const uploadMutation = useMutation({
     mutationFn: (file: File) => uploadKnowledgeFile(currentFolderId ?? null, file),
     onSuccess: node => { pendingItemIdsRef.current.add(node.id); void invalidateTree(); message.success('文件已上传，等待后续处理') },
     onError: error => { void invalidateTree(); message.error(error instanceof Error ? `上传失败：${error.message}` : '上传失败，请重试') },
   })
   const items = useMemo(() => flattenNodes(treeQuery.data?.items ?? []), [treeQuery.data])
-  const hasPendingDocuments = items.some(item => item.processingStatus === 'uploaded' || item.processingStatus === 'processing')
+  const isItemPending = (item: KnowledgeItem) =>
+    item.processingStatus === 'uploaded' || item.processingStatus === 'processing' || item.indexStatus === 'pending' || item.indexStatus === 'processing'
+  const hasPendingDocuments = items.some(isItemPending)
   useEffect(() => {
     const itemIds = new Set(items.map(item => item.id))
     if ([...pendingItemIdsRef.current].some(itemId => !itemIds.has(itemId))) {
       message.error('文件处理失败，未加入知识库')
     }
-    pendingItemIdsRef.current = new Set(items
-      .filter(item => item.processingStatus === 'uploaded' || item.processingStatus === 'processing')
-      .map(item => item.id))
+    pendingItemIdsRef.current = new Set(items.filter(isItemPending).map(item => item.id))
   }, [items])
   useEffect(() => {
     if (!hasPendingDocuments) return
@@ -83,7 +90,12 @@ export function KnowledgeBasePage() {
   }, [currentFolderId, items])
   const visibleItems = useMemo(() => {
     const keyword = searchText.trim().toLocaleLowerCase()
-    return items.filter(item => item.processingStatus !== 'failed' && item.parentId === currentFolderId && (!keyword || item.name.toLocaleLowerCase().includes(keyword)))
+    return items.filter(item => {
+      if (item.processingStatus === 'failed') return false
+      if (item.parentId !== currentFolderId) return false
+      if (keyword && !item.name.toLocaleLowerCase().includes(keyword)) return false
+      return true
+    })
   }, [currentFolderId, items, searchText])
   const moveTargets = items.filter(item => item.kind === 'folder' && !moveItemIds.includes(item.id))
   const folderCount = visibleItems.filter(item => item.kind === 'folder').length
@@ -116,6 +128,7 @@ export function KnowledgeBasePage() {
     if (action === 'move') return openMoveDialog([item.id])
     if (action === 'delete') return removeItems([item.id])
     if (action === 'preview') return openFilePreview(item)
+    if (action === 'retry-embedding') return retryEmbeddingMutation.mutate(item.id)
     message.info('编辑和下载将在后续阶段开放')
   }
   const openFilePreview = (item: KnowledgeItem) => {

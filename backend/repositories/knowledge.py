@@ -16,7 +16,7 @@ def list_nodes(user_id: str) -> Sequence[Mapping[str, Any]]:
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
-                """SELECT node.*, version.processing_status, version.mime_type, version.byte_size
+                """SELECT node.*, version.processing_status, version.index_status, version.mime_type, version.byte_size
                 FROM knowledge_nodes node
                 LEFT JOIN document_versions version
                   ON version.knowledge_node_id = node.id AND version.is_current
@@ -41,6 +41,19 @@ def find_owned_current_file_version(node_id: str, user_id: str) -> Mapping[str, 
                 """SELECT node.id AS node_id, node.name, version.storage_key, version.mime_type, version.processing_status
                 FROM knowledge_nodes node
                 JOIN document_versions version ON version.knowledge_node_id = node.id AND version.is_current
+                WHERE node.id = %s AND node.owner_user_id = %s AND node.node_type = 'file'""",
+                (node_id, user_id),
+            )
+            return cursor.fetchone()
+
+
+def find_owned_current_version_for_retry(node_id: str, user_id: str) -> Mapping[str, Any] | None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """SELECT version.id AS version_id, version.processing_status, version.index_status
+                FROM document_versions version
+                JOIN knowledge_nodes node ON node.id = version.knowledge_node_id AND version.is_current
                 WHERE node.id = %s AND node.owner_user_id = %s AND node.node_type = 'file'""",
                 (node_id, user_id),
             )

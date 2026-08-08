@@ -71,3 +71,9 @@ def update_knowledge_node(node_id: str, data: UpdateKnowledgeNodeRequest, curren
 def delete_knowledge_node(node_id: str, current_user: Annotated[UserResponse, Depends(get_current_user)]) -> Response:
     knowledge_service.delete_node(current_user.id, node_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/files/{node_id}/retry-embedding", status_code=status.HTTP_202_ACCEPTED)
+def retry_embedding(node_id: str, current_user: Annotated[UserResponse, Depends(get_current_user)]) -> Response:
+    knowledge_service.retry_embedding(current_user.id, node_id)
+    return Response(status_code=status.HTTP_202_ACCEPTED)

@@ -7,6 +7,7 @@ export type KnowledgeNode = {
   nodeType: 'folder' | 'file'
   name: string
   status: 'uploaded' | 'processing' | 'ready' | 'failed' | null
+  indexStatus: 'pending' | 'processing' | 'ready' | 'failed' | null
   mimeType: string | null
   byteSize: number | null
   createdAt: string
@@ -45,6 +46,10 @@ export function moveKnowledgeNode(nodeId: string, parentId: string | null) {
 
 export function deleteKnowledgeNode(nodeId: string) {
   return request<void>(`/api/knowledge/nodes/${encodeURIComponent(nodeId)}`, { headers: authorizationHeader(), method: 'DELETE' })
+}
+
+export function retryEmbedding(nodeId: string) {
+  return request<void>(`/api/knowledge/files/${encodeURIComponent(nodeId)}/retry-embedding`, { headers: authorizationHeader(), method: 'POST' })
 }
 
 export function uploadKnowledgeFile(parentId: string | null, file: File) {

@@ -10,8 +10,8 @@ from schemas.knowledge import KnowledgeNodeResponse
 from integrations.object_storage import put_private_object, remove_private_object
 from config import DOCUMENT_MAX_FILE_SIZE_BYTES, DOCUMENT_PROCESSING_TIMEOUT_SECONDS
 from services.document_validation import validate_document_upload
-from services.errors import document_queue_unavailable, file_too_large, invalid_knowledge_move, invalid_parent_node, knowledge_depth_limit_exceeded, knowledge_name_conflict, not_found
-from workers.queue import get_document_processing_queue
+from services.errors import document_not_failed, document_queue_unavailable, file_too_large, invalid_knowledge_move, invalid_parent_node, knowledge_depth_limit_exceeded, knowledge_name_conflict, not_found
+from workers.queue import get_document_processing_queue, get_embedding_queue
 
 
 logger = logging.getLogger(__name__)
@@ -108,6 +108,20 @@ def delete_node(user_id: str, node_id: str) -> None:
             logger.exception("knowledge object cleanup failed", extra={"storage_key": storage_key})
 
 
+def retry_embedding(user_id: str, node_id: str) -> None:
+    version = knowledge_repository.find_owned_current_version_for_retry(node_id, user_id)
+    if version is None:
+        raise not_found()
+    if version["processing_status"] != "ready" or version["index_status"] != "failed":
+        raise document_not_failed()
+    job_id = knowledge_repository.create_embedding_job(str(version["version_id"]))
+    try:
+        get_embedding_queue().enqueue("workers.tasks.process_document_embedding", job_id, job_timeout=900)
+    except Exception:
+        logger.exception("embedding retry enqueue failed", extra={"node_id": node_id, "job_id": job_id})
+        raise document_queue_unavailable()
+
+
 def _enqueue_document_processing(node_id: str, user_id: str) -> None:
     job_id = knowledge_repository.create_ingestion_job(node_id, user_id)
     try:
@@ -149,6 +163,7 @@ def _to_node(row: Mapping[str, Any]) -> KnowledgeNodeResponse:
     return KnowledgeNodeResponse(
         id=str(row["id"]), parent_id=str(row["parent_id"]) if row["parent_id"] else None,
         node_type=row["node_type"], name=row["name"], status=row.get("processing_status"),
+        index_status=row.get("index_status"),
         mime_type=row.get("mime_type"), byte_size=row.get("byte_size"),
         created_at=row["created_at"], updated_at=row["updated_at"],
     )
