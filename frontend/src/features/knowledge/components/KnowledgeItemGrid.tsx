@@ -25,14 +25,22 @@ const processingStatusLabels = {
   failed: '',
 }
 
+const indexStatusLabels = {
+  pending: '索引中',
+  processing: '索引中',
+  ready: '',
+  failed: '',
+}
+
 export function KnowledgeItemGrid({ items, selectedIds, onSelectionChange, onContextMenu, onOpenFolder, onOpenFile }: Props) {
   return <div className="knowledge-item-grid">
     {items.map(item => {
       const selected = selectedIds.includes(item.id)
       const isProcessing = item.processingStatus === 'uploaded' || item.processingStatus === 'processing'
+      const isIndexing = item.processingStatus === 'ready' && (item.indexStatus === 'pending' || item.indexStatus === 'processing')
       const isEmbeddingFailed = item.processingStatus === 'ready' && item.indexStatus === 'failed'
       return <article
-        className={`knowledge-item ${selected ? 'is-selected' : ''} ${isProcessing ? 'is-processing' : ''} ${isEmbeddingFailed ? 'is-embedding-failed' : ''}`}
+        className={`knowledge-item ${selected ? 'is-selected' : ''} ${isProcessing ? 'is-processing' : ''} ${isIndexing ? 'is-indexing' : ''} ${isEmbeddingFailed ? 'is-embedding-failed' : ''}`}
         key={item.id}
         onContextMenu={event => {
           event.preventDefault()
@@ -53,6 +61,9 @@ export function KnowledgeItemGrid({ items, selectedIds, onSelectionChange, onCon
         <p className="knowledge-item__name" title={item.name}>{item.name}</p>
         {isProcessing && item.processingStatus && <span className={`knowledge-item__status is-${item.processingStatus}`}>
           {processingStatusLabels[item.processingStatus]}
+        </span>}
+        {isIndexing && item.indexStatus && <span className={`knowledge-item__status is-${item.indexStatus}`}>
+          {indexStatusLabels[item.indexStatus]}
         </span>}
         {isEmbeddingFailed && <span className="knowledge-item__status is-failed">向量化失败</span>}
         {item.size && <span className="knowledge-item__size">{item.size}</span>}
