@@ -31,7 +31,16 @@ def split_mixed(source_texts: list[SourceText]) -> list[TextChunk]:
             if _is_heading(paragraph):
                 section_title = _clean_heading(paragraph)
                 continue
-            chunks.extend(_split_paragraph(paragraph, source.page_number, section_title, ordinal))
+            paragraph_chunks = _split_paragraph(paragraph, source.page_number, section_title, ordinal)
+            if section_title and paragraph_chunks:
+                first = paragraph_chunks[0]
+                paragraph_chunks[0] = TextChunk(
+                    f"{section_title}\n{first.content}",
+                    first.page_number,
+                    section_title,
+                    first.paragraph_ordinal,
+                )
+            chunks.extend(paragraph_chunks)
     return chunks
 
 
