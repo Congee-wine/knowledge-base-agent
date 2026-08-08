@@ -105,7 +105,16 @@ def _extract_chunks(mime_type: str, content: bytes) -> list[tuple[str, int | Non
         from docx import Document
 
         document = Document(BytesIO(content))
-        text = "\n".join(paragraph.text for paragraph in document.paragraphs if paragraph.text.strip())
+        lines: list[str] = []
+        for paragraph in document.paragraphs:
+            if not paragraph.text.strip():
+                continue
+            if paragraph.style.name.startswith("Heading"):
+                level = int(paragraph.style.name.replace("Heading", "").strip() or "1")
+                lines.append(f"{'#' * level} {paragraph.text}")
+            else:
+                lines.append(paragraph.text)
+        text = "\n\n".join(lines)
         return [(text, None)] if text else []
     text = content.decode("utf-8").strip()
     return [(text, None)] if text else []
