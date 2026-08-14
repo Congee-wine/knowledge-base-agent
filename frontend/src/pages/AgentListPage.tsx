@@ -12,13 +12,11 @@ import { useChatEntry } from '../features/chat/hooks/useChatEntry'
 import { routes } from '../routes/paths'
 import type { ChatAgent } from '../types/chat'
 
-type AgentCategory = 'all' | 'official' | 'digital-human' | 'voice' | 'text'
+type AgentCategory = 'all' | 'official' | 'text'
 
 const categoryTabs: Array<{ id: AgentCategory; label: string }> = [
   { id: 'all', label: '全部' },
   { id: 'official', label: '官方智能体' },
-  { id: 'digital-human', label: '数字人会话' },
-  { id: 'voice', label: '语音会话' },
   { id: 'text', label: '文本会话' },
 ]
 
@@ -88,7 +86,6 @@ export function AgentListPage() {
 
   return <section className="agent-list-page">
     <header className="agent-list-page__banner">
-      <div className="agent-list-page__banner-art" aria-hidden="true"><span /><i /></div>
       <div><h1>智能体</h1><p>管理您的智能体，控制您的智能体分发策略。</p></div>
       <Button className="agent-list-page__create" icon={<FormOutlined />} onClick={() => setCreateModalOpen(true)}>新建智能体</Button>
     </header>

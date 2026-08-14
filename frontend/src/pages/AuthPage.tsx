@@ -72,19 +72,13 @@ export function AuthPage({ mode, onAuthenticated }: Props) {
     }
   }
   return (
-    <main className="grid h-screen grid-cols-1 overflow-hidden bg-white lg:grid-cols-2">
-      <aside className="hidden h-screen w-full overflow-hidden lg:block">
-        <img
-          className="h-full w-full object-cover object-top"
-          src="/auth-hero.png"
-          alt="智问知识库问答智能体"
-        />
-      </aside>
-      <section className="flex h-screen min-h-0 w-full items-center justify-center overflow-y-auto bg-slate-50 px-4 py-4 sm:px-8">
-        <Card className="w-full max-w-[500px] border border-slate-200 shadow-xl shadow-slate-200/45">
+    <main className="auth-page">
+      <section className="auth-page__content">
+        <Card className="auth-card">
           <div className="px-1 py-1 sm:px-3">
             <div className="mb-5 text-center">
-              <RobotOutlined className="text-3xl text-indigo-500" />
+              <span className="auth-card__brand-mark"><RobotOutlined /></span>
+              <p className="auth-card__brand">知问</p>
               <Typography.Title level={2} className="!mb-1 !mt-2 !text-3xl">
                 {isRegister ? '创建账号' : '欢迎回来'}
               </Typography.Title>
@@ -201,7 +195,7 @@ export function AuthPage({ mode, onAuthenticated }: Props) {
                 </Form.Item>
               )}
               <Button
-                className="!h-11 !text-base !font-semibold"
+                className="auth-card__submit"
                 type="primary"
                 htmlType="submit"
                 block
@@ -213,7 +207,7 @@ export function AuthPage({ mode, onAuthenticated }: Props) {
             <div className="mt-5 border-t border-slate-100 pt-4 text-center text-sm text-slate-500">
               {isRegister ? '已有账号？' : '还没有账号？'}{' '}
               <Link
-                className="text-indigo-500 hover:text-indigo-400"
+                className="auth-card__link"
                 to={isRegister ? routes.login : routes.register}
               >
                 {isRegister ? '立即登录' : '立即注册'}

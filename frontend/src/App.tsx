@@ -91,7 +91,7 @@ function App() {
 
   if (accessToken && sessionQuery.isPending) return <div className="grid h-screen place-items-center bg-slate-50 text-sm text-slate-500">正在检查登录状态…</div>
 
-  return <ConfigProvider theme={{ token: { colorPrimary: '#4f6cff', borderRadius: 10, fontFamily: 'Microsoft YaHei, PingFang SC, Arial, sans-serif' } }}>
+  return <ConfigProvider theme={{ token: { colorPrimary: '#0fb8ad', borderRadius: 14, fontFamily: 'Microsoft YaHei, PingFang SC, Arial, sans-serif' } }}>
     <BrowserRouter>
       <Suspense fallback={<RouteLoadingFallback />}>
           <Routes>

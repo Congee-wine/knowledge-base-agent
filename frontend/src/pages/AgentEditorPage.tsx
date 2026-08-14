@@ -57,7 +57,6 @@ export function AgentEditorPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [form] = Form.useForm<AgentFormValues>()
-  const allowConversationUpload = Form.useWatch('allowConversationUpload', form)
   const allowNetworkAccess = Form.useWatch('allowNetworkAccess', form)
   const [previewValues, setPreviewValues] = useState<AgentFormValues | null>(
     null,
@@ -224,15 +223,6 @@ export function AgentEditorPage() {
             </Form.List>
           </Form.Item>
           <Form.Item
-            className="agent-workbench__hotwords"
-            label="语音识别热词(,分隔)"
-          >
-            <Input disabled placeholder="请输入语音识别热词" />
-            <p className="agent-workbench__field-help">
-              用于识别上传音频文件的热词替换。
-            </p>
-          </Form.Item>
-          <Form.Item
             label="开场欢迎语"
             name="welcomeMessage"
             rules={[{ max: 1000, message: '欢迎语不能超过 1000 个字符' }]}
@@ -260,20 +250,6 @@ export function AgentEditorPage() {
               选择此智能体所引用的专属资料，用于增强回复的专业性和准确性。
             </p>
           </section>
-          <Form.Item
-            label="显示上传文件入口"
-            name="allowConversationUpload"
-            extra={
-              <span className="agent-workbench__field-help">
-                选择不需要上传文件入口后，用户在对话中无法上传文件；选择需要上传文件入口，则用户可以在对话中上传文件。
-              </span>
-            }
-          >
-            <Radio.Group>
-              <Radio value={false}>不需要</Radio>
-              <Radio value={true}>需要</Radio>
-            </Radio.Group>
-          </Form.Item>
           <Form.Item
             label="显示联网搜索入口"
             name="allowNetworkAccess"
@@ -318,9 +294,6 @@ export function AgentEditorPage() {
             agent={{
               ...agent,
               ...previewValues,
-              allowConversationUpload:
-                allowConversationUpload ??
-                previewValues.allowConversationUpload,
               allowNetworkAccess:
                 allowNetworkAccess ?? previewValues.allowNetworkAccess,
             }}

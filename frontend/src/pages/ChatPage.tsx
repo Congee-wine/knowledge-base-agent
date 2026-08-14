@@ -138,9 +138,15 @@ export function ChatPage() {
       className={`chat-page flex h-full min-h-[680px] flex-col overflow-hidden bg-white transition-[padding] duration-300 ${historyOpen ? 'chat-page--history-open lg:pr-[260px]' : ''}`}
       aria-label={`${agent.name} 聊天页面`}
     >
-      <header className="flex h-[70px] shrink-0 items-center justify-end gap-5 px-8">
-        <Button className="!px-0 !font-medium !text-slate-700" icon={<PlusCircleOutlined />} type="text" onClick={createNewConversation}>新会话</Button>
-        <Button className="!px-0 !font-medium !text-slate-700" icon={<HistoryOutlined />} type="text" onClick={() => setHistoryOpen(true)}>历史记录</Button>
+      <header className="chat-page__header">
+        <div className="chat-page__identity">
+          <span>{agent.name.slice(0, 1)}</span>
+          <div><strong>{agent.name}</strong><small>在线</small></div>
+        </div>
+        <div className="chat-page__actions">
+          <Button className="!px-0 !font-medium !text-slate-700" icon={<PlusCircleOutlined />} type="text" onClick={createNewConversation}>新会话</Button>
+          <Button className="!px-0 !font-medium !text-slate-700" icon={<HistoryOutlined />} type="text" onClick={() => setHistoryOpen(true)}>历史记录</Button>
+        </div>
       </header>
       {conversationsQuery.isError && <Alert className="mx-8" type="warning" showIcon message="历史会话加载失败" action={<Button size="small" onClick={() => void conversationsQuery.refetch()}>重试</Button>} />}
       {conversationDetailQuery.isError && <Alert className="mx-8" type="warning" showIcon message="会话详情加载失败" action={<Button size="small" onClick={() => void conversationDetailQuery.refetch()}>重试</Button>} />}

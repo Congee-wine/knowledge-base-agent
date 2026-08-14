@@ -1,5 +1,5 @@
 import { CheckOutlined, PlusOutlined } from '@ant-design/icons'
-import { Button, Form, Input, Modal, Radio, Upload, message } from 'antd'
+import { Button, Form, Input, Modal, Upload, message } from 'antd'
 import type { UploadFile, UploadProps } from 'antd'
 import { useEffect, useState } from 'react'
 import { bootstrapAgent } from '../../../api/agents'
@@ -84,13 +84,6 @@ export function CreateAgentModal({ onCreated, onOpenChange, open }: Props) {
       </Form.Item>
       <Form.Item label="名称" name="name" rules={[{ required: true, whitespace: true, message: '请输入智能体名称' }, { max: 50, message: '名称不能超过 50 个字符' }]}>
         <Input maxLength={50} placeholder="请输入智能体名称" showCount />
-      </Form.Item>
-      <Form.Item label="交互类型">
-        <Radio.Group defaultValue="text">
-          <Radio value="text">文本交互</Radio>
-          <Radio disabled value="voice">语音交互（暂未开放）</Radio>
-          <Radio disabled value="digital-human">数字人交互（暂未开放）</Radio>
-        </Radio.Group>
       </Form.Item>
       <Form.Item label="描述" name="description" rules={[{ max: 200, message: '描述不能超过 200 个字符' }]}>
         <Input.TextArea maxLength={200} placeholder="请输入智能体描述（选填）" rows={3} showCount />

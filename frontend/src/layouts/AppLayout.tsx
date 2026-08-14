@@ -1,13 +1,11 @@
 import { useState } from 'react'
 import {
   AppstoreOutlined,
-  BellOutlined,
   DatabaseOutlined,
   LogoutOutlined,
   RobotOutlined,
-  SearchOutlined,
 } from '@ant-design/icons'
-import { Avatar, Button, Input } from 'antd'
+import { Avatar, Button } from 'antd'
 import { useAgents } from '../features/agents/hooks/useAgents'
 import { AgentAvatar } from '../features/agents/components/AgentAvatar'
 import { useChatEntry } from '../features/chat/hooks/useChatEntry'
@@ -56,26 +54,26 @@ export function AppLayout({ user, onLogout }: Props) {
 
   if (isAgentWorkbench) {
     return (
-      <main className="h-screen overflow-hidden bg-white text-slate-700">
+      <main className="agent-workbench-shell">
         <Outlet />
       </main>
     )
   }
 
   return (
-    <main className="flex h-screen overflow-hidden bg-white text-slate-700">
+    <main className="app-shell">
       <aside
-        className={`flex shrink-0 flex-col border-r border-slate-200 bg-[#fbfcff] transition-[width] duration-200 ${collapsed ? 'w-[64px]' : 'w-[240px]'}`}
+        className={`app-sidebar ${collapsed ? 'app-sidebar--collapsed' : ''}`}
       >
         <div
-          className={`flex h-[70px] items-center ${collapsed ? 'justify-center' : 'justify-between px-4'}`}
+          className={`app-sidebar__brand ${collapsed ? 'justify-center' : 'justify-between'}`}
         >
           {!collapsed && (
             <div className="flex items-center gap-2 text-xl font-bold tracking-tight text-slate-800">
-              <span className="grid h-8 w-8 place-items-center rounded-md bg-gradient-to-br from-cyan-300 via-blue-400 to-indigo-500 text-sm text-white">
-                智
+              <span className="app-sidebar__logo">
+                知
               </span>
-              智问
+              知问
             </div>
           )}
           <Button
@@ -91,15 +89,7 @@ export function AppLayout({ user, onLogout }: Props) {
 
         {!collapsed && (
           <>
-            <div className="px-4">
-              <Input
-                className="!h-10 !rounded-xl !border-0 !bg-slate-100"
-                prefix={<SearchOutlined />}
-                placeholder="搜索"
-                suffix={<span className="text-xs text-slate-500">Ctrl K</span>}
-              />
-            </div>
-            <nav className="mt-4 px-4">
+            <nav className="app-sidebar__nav">
               {navigationItems.map((item) => (
                 <NavLink
                   key={item.to}
@@ -107,7 +97,7 @@ export function AppLayout({ user, onLogout }: Props) {
                     const isChat =
                       item.to === routes.app.chat &&
                       location.pathname.startsWith(routes.app.chat)
-                    return `mb-1 flex h-12 items-center gap-3 rounded-xl px-3 text-[15px] transition ${isActive || isChat ? 'bg-indigo-50 text-[#3665e6]' : 'text-slate-600 hover:bg-slate-100'}`
+                    return `app-sidebar__nav-item ${isActive || isChat ? 'is-active' : ''}`
                   }}
                   to={item.to}
                 >
@@ -117,14 +107,14 @@ export function AppLayout({ user, onLogout }: Props) {
               ))}
             </nav>
 
-            <div className="mt-3 border-t border-slate-200 px-4 pt-4">
-              <p className="mb-3 text-sm text-slate-500">我的智能体</p>
+            <div className="app-sidebar__agents">
+              <p>我的智能体</p>
               {sidebarAgents.map((agent) => (
                 <NavLink
                   end
                   key={agent.id}
                   className={({ isActive }) =>
-                    `mb-1 flex h-12 items-center gap-3 rounded-xl px-2 text-[15px] ${isActive ? 'bg-indigo-50 text-[#3665e6]' : 'text-slate-600 hover:bg-slate-100'}`
+                    `app-sidebar__agent ${isActive ? 'is-active' : ''}`
                   }
                   to={
                     agent.kind === 'builtin'
@@ -134,7 +124,7 @@ export function AppLayout({ user, onLogout }: Props) {
                 >
                   <AgentAvatar
                     agent={agent}
-                    className="grid h-8 w-8 place-items-center overflow-hidden rounded-lg bg-gradient-to-br from-cyan-300 to-indigo-500 text-base text-white"
+                    className="app-sidebar__agent-avatar"
                     imageClassName="h-full w-full object-cover"
                   />
                   <span className="truncate">{agent.name}</span>
@@ -142,7 +132,7 @@ export function AppLayout({ user, onLogout }: Props) {
               ))}
             </div>
 
-            <div className="mt-auto flex items-center gap-2 border-t border-slate-200 px-4 py-4">
+            <div className="app-sidebar__account">
               <Avatar className="bg-slate-200 text-slate-500" size={32}>
                 {user.email.slice(0, 1).toUpperCase()}
               </Avatar>
@@ -150,7 +140,6 @@ export function AppLayout({ user, onLogout }: Props) {
                 <p className="truncate text-sm text-slate-700">{user.email}</p>
                 <p className="truncate text-xs text-slate-400">当前登录账号</p>
               </div>
-              <Button aria-label="通知" icon={<BellOutlined />} type="text" />
               <Button
                 aria-label="退出登录"
                 icon={<LogoutOutlined />}
