@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Button, message } from 'antd'
+import { Button, message, Tooltip } from 'antd'
 import { DatabaseOutlined, GlobalOutlined } from '@ant-design/icons'
 import { Sender } from '@ant-design/x'
 import type { ChatAgent } from '../../../types/chat'
@@ -32,7 +32,7 @@ export function ChatComposerSurface({ agent, value, sending, onChange, onStop, o
       footer={actionNode => (
         <div className="flex items-center justify-between gap-4 pt-1">
           <div className="flex flex-wrap items-center gap-2">
-            {isBuiltin && <Button icon={<DatabaseOutlined />} size="small" type={useKnowledgeBase ? 'primary' : 'default'} onClick={() => setUseKnowledgeBase(enabled => !enabled)}>全部资料</Button>}
+            {isBuiltin && <Tooltip title={useKnowledgeBase ? '基于已导入的知识库资料回答' : '不使用知识库资料'}><Button icon={<DatabaseOutlined />} size="small" type={useKnowledgeBase ? 'primary' : 'default'} onClick={() => setUseKnowledgeBase(enabled => !enabled)}>知识库</Button></Tooltip>}
             {(isBuiltin || agent.allowNetworkAccess) && <Button aria-label="联网" icon={<GlobalOutlined />} size="small" onClick={notifyUnsupported} />}
           </div>
           <div className="prototype-chat-actions shrink-0">{actionNode}</div>

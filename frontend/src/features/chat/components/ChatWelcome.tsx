@@ -1,8 +1,12 @@
 import { Prompts, Welcome } from '@ant-design/x'
+import { Avatar } from 'antd'
 import { PersonalAgentWelcome } from '../../agents/components/PersonalAgentWelcome'
 import type { ChatAgent } from '../../../types/chat'
 
-type Props = { agent: ChatAgent; onPromptClick: (prompt: string) => void }
+type Props = {
+  agent: ChatAgent
+  onPromptClick: (prompt: string) => void
+}
 
 export function ChatWelcome({ agent, onPromptClick }: Props) {
   if (agent.kind === 'personal') {
@@ -19,6 +23,7 @@ export function ChatWelcome({ agent, onPromptClick }: Props) {
     <div className="chat-welcome w-full max-w-[810px] px-8 pt-1 lg:ml-[18%] lg:px-0">
       <Welcome
         className="ai-manager-welcome"
+        icon={<Avatar alt="AI 管家" className="ai-manager-welcome__robot" shape="square" size={112} src="/welcome-robot.png" />}
         description={
           agent.welcomeMessage ??
           '我是 AI 管家，可以协助你整理信息、解答问题和完成文本工作。'
@@ -26,7 +31,7 @@ export function ChatWelcome({ agent, onPromptClick }: Props) {
         title="你好，欢迎使用 AI 管家"
         variant="borderless"
       />
-      {agent.presetQuestions.length > 0 && (
+      {agent.kind !== 'builtin' && agent.presetQuestions.length > 0 && (
         <Prompts
           className="ai-manager-prompts"
           items={agent.presetQuestions.map((prompt, index) => ({
