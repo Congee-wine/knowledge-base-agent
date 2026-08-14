@@ -22,6 +22,7 @@ from services.retrieval import (
     build_retrieval_context,
     execute_knowledge_operation,
     has_ready_knowledge,
+    has_knowledge_scope,
 )
 
 
@@ -46,8 +47,11 @@ class AgentWorkflowState(TypedDict):
     system_prompt: str | None
     history: list[ModelMessage]
     content: str
-    knowledge_available: bool
+    use_knowledge_base: bool
+    knowledge_enabled: bool
+    has_bound_scope: bool
     has_ready_knowledge: bool
+    direct_answer_reason: str
     retrieval_failed: bool
     public_profile: AgentPublicProfile
     public_answer: str
@@ -57,7 +61,7 @@ class AgentWorkflowState(TypedDict):
     stream_input: AnswerStreamInput | None
 
 
-RouteName = Literal["answer_public_profile", "execute_knowledge_operation", "generate_answer", "knowledge_unavailable", "no_match", "retrieval_failed"]
+RouteName = Literal["answer_public_profile", "direct_model_answer", "execute_knowledge_operation", "generate_answer", "knowledge_unavailable", "no_match", "retrieval_failed"]
 
 
 def stream_answer(
@@ -97,7 +101,6 @@ def stream_with_retrieval(
     agent_name: str | None = None,
     agent_description: str | None = None,
 ) -> Iterator[dict[str, object]]:
-    knowledge_available = agent_kind == "personal" or use_knowledge_base
     initial_state: AgentWorkflowState = {
         "user_id": user_id,
         "agent_id": agent_id,
@@ -105,10 +108,13 @@ def stream_with_retrieval(
         "system_prompt": system_prompt,
         "history": history,
         "content": content,
-        "knowledge_available": knowledge_available,
+        "use_knowledge_base": use_knowledge_base,
+        "knowledge_enabled": False,
+        "has_bound_scope": False,
         "has_ready_knowledge": False,
+        "direct_answer_reason": "",
         "retrieval_failed": False,
-        "public_profile": build_public_profile(agent_name, agent_description, knowledge_available),
+        "public_profile": build_public_profile(agent_name, agent_description, agent_kind == "personal" or use_knowledge_base),
         "public_answer": "",
         "strategy": RuntimeStrategy("direct_answer", False),
         "sources": [],
@@ -123,7 +129,8 @@ def stream_with_retrieval(
 
 def _build_agent_graph():
     graph = StateGraph(AgentWorkflowState)
-    graph.add_node("check_knowledge_availability", _check_knowledge_availability)
+    graph.add_node("check_knowledge_capability", _check_knowledge_capability)
+    graph.add_node("direct_model_answer", _direct_model_answer)
     graph.add_node("analyze_request", _analyze_request)
     graph.add_node("answer_public_profile", _answer_public_profile)
     graph.add_node("execute_knowledge_operation", _execute_knowledge_operation)
@@ -135,12 +142,13 @@ def _build_agent_graph():
     graph.add_node("guard_identity", _guard_identity)
     graph.add_edge(START, "guard_identity")
     graph.add_conditional_edges("guard_identity", _route_after_identity_guard, {
-        "answer_public_profile": "answer_public_profile", "check_knowledge_availability": "check_knowledge_availability",
+        "answer_public_profile": "answer_public_profile", "check_knowledge_capability": "check_knowledge_capability",
     })
     graph.add_edge("answer_public_profile", END)
-    graph.add_conditional_edges("check_knowledge_availability", _route_after_knowledge_check, {
-        "analyze_request": "analyze_request", "knowledge_unavailable": "knowledge_unavailable",
+    graph.add_conditional_edges("check_knowledge_capability", _route_after_knowledge_check, {
+        "direct_model_answer": "direct_model_answer", "analyze_request": "analyze_request", "knowledge_unavailable": "knowledge_unavailable",
     })
+    graph.add_edge("direct_model_answer", "generate_answer")
     graph.add_edge("knowledge_unavailable", END)
     graph.add_conditional_edges("analyze_request", _route_after_analysis, {
         "execute_knowledge_operation": "execute_knowledge_operation", "generate_answer": "generate_answer",
@@ -156,13 +164,25 @@ def _build_agent_graph():
 
 
 def _analyze_request(state: AgentWorkflowState) -> dict[str, RuntimeStrategy]:
-    return {"strategy": decide_strategy(state["content"], state["history"], state["knowledge_available"])}
+    return {"strategy": decide_strategy(state["content"], state["history"], state["knowledge_enabled"])}
 
 
-def _check_knowledge_availability(state: AgentWorkflowState) -> dict[str, bool]:
-    if not state["knowledge_available"]:
-        return {"has_ready_knowledge": False}
-    return {"has_ready_knowledge": has_ready_knowledge(state["user_id"], state["agent_id"])}
+def _check_knowledge_capability(state: AgentWorkflowState) -> dict[str, bool]:
+    if state["agent_kind"] == "builtin":
+        knowledge_enabled = state["use_knowledge_base"]
+        return {"knowledge_enabled": knowledge_enabled, "has_bound_scope": False, "has_ready_knowledge": has_ready_knowledge(state["user_id"], state["agent_id"]) if knowledge_enabled else False}
+    has_bound_scope = has_knowledge_scope(state["user_id"], state["agent_id"])
+    return {
+        "knowledge_enabled": has_bound_scope,
+        "has_bound_scope": has_bound_scope,
+        "has_ready_knowledge": has_ready_knowledge(state["user_id"], state["agent_id"]) if has_bound_scope else False,
+    }
+
+
+def _direct_model_answer(state: AgentWorkflowState) -> dict[str, str]:
+    if state["agent_kind"] == "personal" and not state["has_bound_scope"]:
+        return {"direct_answer_reason": "unbound_personal_scope"}
+    return {"direct_answer_reason": "knowledge_disabled"}
 
 
 def _guard_identity(state: AgentWorkflowState) -> dict[str, str]:
@@ -171,12 +191,14 @@ def _guard_identity(state: AgentWorkflowState) -> dict[str, str]:
     return {"public_answer": ""}
 
 
-def _route_after_identity_guard(state: AgentWorkflowState) -> Literal["answer_public_profile", "check_knowledge_availability"]:
-    return "answer_public_profile" if state["public_answer"] else "check_knowledge_availability"
+def _route_after_identity_guard(state: AgentWorkflowState) -> Literal["answer_public_profile", "check_knowledge_capability"]:
+    return "answer_public_profile" if state["public_answer"] else "check_knowledge_capability"
 
 
-def _route_after_knowledge_check(state: AgentWorkflowState) -> Literal["analyze_request", "knowledge_unavailable"]:
-    if state["knowledge_available"] and not state["has_ready_knowledge"]:
+def _route_after_knowledge_check(state: AgentWorkflowState) -> Literal["direct_model_answer", "analyze_request", "knowledge_unavailable"]:
+    if not state["knowledge_enabled"]:
+        return "direct_model_answer"
+    if not state["has_ready_knowledge"]:
         return "knowledge_unavailable"
     return "analyze_request"
 
@@ -252,6 +274,10 @@ def _events_for_node(node_name: str, result: dict[str, object]) -> Iterator[dict
                 yield {"type": "status", "stage": "retrieving", "text": text}
             else:
                 yield {"type": "status", "stage": "generating", "text": "正在生成回答"}
+        return
+    if node_name == "direct_model_answer":
+        if result.get("direct_answer_reason") == "unbound_personal_scope":
+            yield {"type": "status", "stage": "generating", "text": "当前智能体未绑定知识库，正在由模型直接回答"}
         return
     if node_name == "knowledge_unavailable":
         yield {"type": "status", "stage": "no_documents", "text": "当前资料范围没有已完成索引的文件"}

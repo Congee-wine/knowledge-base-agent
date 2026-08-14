@@ -7,7 +7,7 @@ import re
 
 from config import RERANK_CANDIDATE_LIMIT
 from integrations.query_embeddings import embed_query, rerank_query_candidates
-from repositories import knowledge_retrieval
+from repositories import knowledge, knowledge_retrieval
 from retrieval.models import RetrievalSource
 from services.agent_strategy import KnowledgeOperation
 
@@ -26,6 +26,10 @@ logger = logging.getLogger(__name__)
 
 def has_ready_knowledge(user_id: str, agent_id: str) -> bool:
     return knowledge_retrieval.has_ready_agent_documents(user_id, agent_id)
+
+
+def has_knowledge_scope(user_id: str, agent_id: str) -> bool:
+    return knowledge.has_agent_scope(user_id, agent_id)
 
 
 def retrieve_for_agent(user_id: str, agent_id: str, query: str) -> list[RetrievalSource]:

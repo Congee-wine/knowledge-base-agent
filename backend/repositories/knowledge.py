@@ -328,6 +328,20 @@ def list_agent_scope_node_ids(user_id: str, agent_id: str) -> list[str]:
             return [str(row["knowledge_node_id"]) for row in cursor.fetchall()]
 
 
+def has_agent_scope(user_id: str, agent_id: str) -> bool:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """SELECT EXISTS (
+                    SELECT 1 FROM agent_knowledge_scopes
+                    WHERE owner_user_id = %s AND agent_id = %s
+                ) AS has_scope""",
+                (user_id, agent_id),
+            )
+            row = cursor.fetchone()
+            return bool(row["has_scope"])
+
+
 def replace_agent_scope_node_ids(user_id: str, agent_id: str, node_ids: list[str]) -> None:
     with get_connection() as connection:
         with connection.cursor() as cursor:

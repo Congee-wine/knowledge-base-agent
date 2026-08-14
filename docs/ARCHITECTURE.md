@@ -204,6 +204,10 @@ START
                                                   └─ 检索失败 ─> retrieval_failed ─> END
 ```
 
+## 2026-08-14 路由规则补充
+
+个人 Agent 的知识库能力以 `agent_knowledge_scopes` 是否存在绑定为准：未绑定范围时不检索，SSE 推送“未绑定知识库，正在由模型直接回答”后进入普通模型生成；已绑定范围但不存在 ready/current/已索引资料时才进入 `knowledge_unavailable` 终态。内置 AI 管家继续由 `useKnowledgeBase` 控制是否使用当前用户全部资料库。存在可用资料时，目录问题直接查询目录，其余问题固定进入语义检索与证据评估。
+
 ## 前端路由
 
 ```text

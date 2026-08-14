@@ -4280,6 +4280,79 @@ Ant Design X 仅承担 AI 交互展示，避免与业务接口、鉴权和状态
 
 - 无新增问题。
 
+## 2026-08-14：确认 Agent 问答路由规则
+
+### 任务目标
+
+明确个人 Agent 未绑定资料范围、已绑定但无可用索引资料，以及内置 AI 管家全部资料库开关下的 LangGraph 路由行为。
+
+### 实现内容
+
+- 创建已确认、待实现的 Agent 问答路由功能设计。
+- 明确个人 Agent 未绑定范围时走普通模型回答，并推送未绑定知识库提示。
+- 明确内置 AI 管家继续使用 `useKnowledgeBase` 控制当前用户全部资料库。
+
+### 主要文件
+
+- `docs/features/agent-chat-routing/`：本次路由规则、后端设计、SSE 语义与验收标准。
+- `docs/QUESTIONS.md`：记录用户确认的业务结论。
+- `docs/DECISIONS.md`：记录路由判定的技术决策。
+
+### 技术方案
+
+将“是否绑定资料范围”与“范围内是否存在 ready 索引资料”作为独立状态，由后端 LangGraph 条件边决定路由，避免前端参数绕过资料权限。
+
+### 接口或数据变化
+
+无。本次仅完成设计与需求确认；后续实现复用现有接口和数据表。
+
+### 验证情况
+
+- 已核对现有 `agent_runtime.py`、资料范围查询和 ready 文档查询逻辑。
+- 未执行测试：本次未修改运行代码。
+
+### 遗留问题
+
+- 路由实现、自动化测试和端到端验收待后续开发任务完成。
+
+## 2026-08-14：实现 Agent 问答路由
+
+### 任务目标
+
+按已确认流程区分个人 Agent 未绑定资料范围、已绑定但无完成索引资料与内置 AI 管家全部资料库开关。
+
+### 实现内容
+
+- 新增个人 Agent 资料范围绑定存在性查询。
+- LangGraph 将知识库能力检查调整为独立节点：个人 Agent 先检查绑定，内置 AI 管家按 `useKnowledgeBase` 决定是否启用全库检索。
+- 未绑定范围时跳过目录与检索，推送明确状态后直接模型回答；已启用知识库但无 ready 文档时进入无资料终态。
+- 新增未绑定个人 Agent 和关闭 AI 管家全库开关的运行时回归测试。
+
+### 主要文件
+
+- `backend/repositories/knowledge.py`：查询个人 Agent 是否绑定资料范围。
+- `backend/services/retrieval.py`：为工作流提供范围绑定查询。
+- `backend/services/agent_runtime.py`：调整 LangGraph 状态、节点和条件路由。
+- `backend/tests/test_agent_runtime.py`：覆盖新增路由分支。
+
+### 技术方案
+
+“是否绑定范围”与“范围内是否有完成索引文件”分别判定；前者决定是否进入知识库模式，后者仅在已进入知识库模式后决定是否返回无资料终态。
+
+### 接口或数据变化
+
+无。复用既有 SSE `status` 事件和 `useKnowledgeBase` 字段，不新增迁移。
+
+### 验证情况
+
+- 通过：`python -m unittest tests.test_agent_runtime tests.test_agent_strategy tests.test_streaming_protocol -v`，18 项通过。
+- 通过：`python -m compileall -q services repositories`、`git diff --check`。
+- 未完成：完整后端测试集在 60 秒执行窗口超时；输出显示运行至集成测试中段，未获得最终通过结果。浏览器与真实语料端到端验证未执行。
+
+### 遗留问题
+
+- 需在真实浏览器和资料库环境验证状态文案、目录查询和检索分支。
+
 ## 2026-08-05：优化聊天回答阅读体验
 
 ### 任务目标

@@ -13,3 +13,5 @@
 - [features/chat-stream-resumption/](features/chat-stream-resumption/README.md)：流式对话断线自动重连、事件回放与页面刷新恢复设计。
 
 更新这些文档时，不记录 `.env` 中的真实值、令牌、密码、连接字符串或其他敏感信息。
+
+- [features/agent-chat-routing/](features/agent-chat-routing/README.md)：个人 Agent 与内置 AI 管家的知识库问答路由规则设计（已确认，待实现）。
