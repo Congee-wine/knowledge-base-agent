@@ -133,6 +133,15 @@ def build_knowledge_overview_context(sources: list[RetrievalSource]) -> str | No
     )
 
 
+def build_knowledge_overview_manifest(sources: list[RetrievalSource]) -> str:
+    """Return the complete, deterministic document list shown before model commentary."""
+    lines = [
+        f"{index}. {source.document_name}（{_document_type(source.document_name)}）"
+        for index, source in enumerate(sources, start=1)
+    ]
+    return f"当前知识库包含以下 {len(sources)} 份已完成索引的资料：\n\n" + "\n".join(lines)
+
+
 def build_no_knowledge_answer() -> str:
     return "当前智能体资料范围内没有已完成索引的知识库文件，请先上传资料并等待索引完成。"
 

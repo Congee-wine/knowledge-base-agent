@@ -17,6 +17,7 @@ from services.agent_identity import (
 from services.agent_strategy import RuntimeStrategy, decide_strategy
 from services.retrieval import (
     build_knowledge_overview_context,
+    build_knowledge_overview_manifest,
     build_no_knowledge_answer,
     build_no_match_answer,
     build_retrieval_context,
@@ -39,6 +40,7 @@ class AnswerStreamInput(TypedDict):
     retrieval_context: str | None
     strategy: RuntimeStrategy
     public_profile: AgentPublicProfile
+    answer_prefix: str | None
 
 
 class AgentWorkflowState(TypedDict):
@@ -60,9 +62,6 @@ class AgentWorkflowState(TypedDict):
     sources: list[RetrievalSource]
     answer: str
     stream_input: AnswerStreamInput | None
-
-
-RouteName = Literal["answer_public_profile", "direct_model_answer", "execute_knowledge_operation", "generate_answer", "knowledge_unavailable", "no_match", "retrieval_failed"]
 
 
 def stream_answer(
@@ -214,7 +213,7 @@ def _knowledge_unavailable(_: AgentWorkflowState) -> dict[str, str]:
     return {"answer": build_no_knowledge_answer()}
 
 
-def _route_after_analysis(state: AgentWorkflowState) -> RouteName:
+def _route_after_analysis(state: AgentWorkflowState) -> Literal["execute_knowledge_operation", "generate_answer"]:
     if state["strategy"].uses_knowledge:
         return "execute_knowledge_operation"
     return "generate_answer"
@@ -236,8 +235,6 @@ def _route_after_knowledge_operation(state: AgentWorkflowState) -> Literal["gene
 
 
 def _evaluate_evidence(state: AgentWorkflowState) -> dict[str, RuntimeStrategy]:
-    if state["sources"]:
-        return {"strategy": state["strategy"]}
     return {"strategy": state["strategy"]}
 
 
@@ -258,8 +255,10 @@ def _retrieval_failed(_: AgentWorkflowState) -> dict[str, str]:
 def _generate_answer(state: AgentWorkflowState) -> dict[str, object]:
     if state["strategy"].knowledge_operation == "knowledge_overview":
         context = build_knowledge_overview_context(state["sources"])
+        answer_prefix = build_knowledge_overview_manifest(state["sources"])
     else:
         context = build_retrieval_context(state["sources"]) if state["strategy"].uses_knowledge else None
+        answer_prefix = None
     return {"stream_input": {
         "system_prompt": state["system_prompt"],
         "history": state["history"],
@@ -267,6 +266,7 @@ def _generate_answer(state: AgentWorkflowState) -> dict[str, object]:
         "retrieval_context": context,
         "strategy": state["strategy"],
         "public_profile": state["public_profile"],
+        "answer_prefix": answer_prefix,
     }}
 
 
@@ -328,6 +328,9 @@ def _events_for_node(node_name: str, result: dict[str, object]) -> Iterator[dict
         stream_input = result.get("stream_input")
         if isinstance(stream_input, dict):
             yield {"type": "status", "stage": "generating", "text": "正在生成回答"}
+            answer_prefix = stream_input.get("answer_prefix")
+            if isinstance(answer_prefix, str) and answer_prefix:
+                yield {"type": "answer_delta", "content": answer_prefix + "\n\n"}
             yield from (
                 {"type": "answer_delta", "content": text}
                 for text in stream_answer(

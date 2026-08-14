@@ -102,7 +102,7 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertIn("\u77e5\u8bc6\u5e93", str(events[-1]["content"]))
 
     @patch("services.agent_runtime.has_knowledge_scope", return_value=True)
-    @patch("services.agent_runtime.stream_answer", return_value=iter(["资料概览"]))
+    @patch("services.agent_runtime.stream_answer", return_value=iter(["资料概述\n\n可以优先回答的问题"]))
     @patch("services.agent_runtime.execute_knowledge_operation")
     @patch("services.agent_runtime.has_ready_knowledge", return_value=False)
     def test_missing_ready_documents_reports_knowledge_base_unavailable(self, _: object, execute_operation: object, stream_answer: object, __: object) -> None:
@@ -114,7 +114,7 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertIn("没有已完成索引", str(events[-1]["content"]))
 
     @patch("services.agent_runtime.has_knowledge_scope", return_value=True)
-    @patch("services.agent_runtime.stream_answer", return_value=iter(["资料概览"]))
+    @patch("services.agent_runtime.stream_answer", return_value=iter(["资料概述\n\n可以优先回答的问题"]))
     @patch("services.agent_runtime.execute_knowledge_operation")
     @patch("services.agent_runtime.has_ready_knowledge", return_value=True)
     def test_overview_operation_uses_documents_to_generate_a_model_overview(self, _: object, execute_operation: object, stream_answer: object, __: object) -> None:
@@ -127,7 +127,11 @@ class AgentRuntimeTests(unittest.TestCase):
 
         execute_operation.assert_called_once_with("knowledge_overview", "user-1", "agent-1", "知识库有哪些文件？")
         stream_answer.assert_called_once()
-        self.assertIn("资料概览", [event["content"] for event in events if event["type"] == "answer_delta"])
+        answer = "".join(event["content"] for event in events if event["type"] == "answer_delta")
+        self.assertIn("当前知识库包含以下 2 份", answer)
+        self.assertIn("资料一.md", answer)
+        self.assertIn("资料二.pdf", answer)
+        self.assertIn("可以优先回答的问题", answer)
         context = stream_answer.call_args.args[3]
         self.assertIn("资料一.md", context)
         self.assertIn("资料二.pdf", context)

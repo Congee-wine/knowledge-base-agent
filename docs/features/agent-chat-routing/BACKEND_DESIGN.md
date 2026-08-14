@@ -63,3 +63,4 @@ analyze_request
 - `retrieval.execute_knowledge_operation` 对概览从授权范围读取每份 ready 文档的首个已索引片段；查询本身仍由仓储层按用户和 Agent 范围隔离。
 - `build_knowledge_overview_context` 负责限制每个片段为 500 字符，避免把完整资料传给模型。
 - 概览专用提示词要求模型只根据文件名与片段生成“资料—主题—可回答问题”摘要；具体事实问答不改变原有检索和证据评估规则。
+- `build_knowledge_overview_manifest` 在模型流式输出前写入后端生成的完整资料清单；该清单与 `sources` 事件共享同一个 `sources` 列表，保证引用与回答依据一致。

@@ -24,7 +24,7 @@ def decide_strategy(content: str, history: list[dict[str, str]], knowledge_avail
     if not knowledge_available:
         return RuntimeStrategy("direct_answer", False)
     overview_markers = (
-        "哪些文件", "文件列表", "资料目录", "文档目录", "有哪些资料",
+        "哪些文件", "文件列表", "资料目录", "文档目录", "知识库目录", "有哪些资料",
         "知识库有什么", "这个知识库有什么", "能回答什么", "可以回答什么",
     )
     operation: KnowledgeOperation = "knowledge_overview" if any(marker in content for marker in overview_markers) else "semantic_search"

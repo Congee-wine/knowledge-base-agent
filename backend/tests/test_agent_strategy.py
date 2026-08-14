@@ -14,6 +14,11 @@ class AgentStrategyTests(unittest.TestCase):
 
         self.assertEqual(strategy, RuntimeStrategy("knowledge_answer", True, "knowledge_overview"))
 
+    def test_knowledge_base_directory_uses_knowledge_overview(self) -> None:
+        strategy = decide_strategy("知识库目录", [], True)
+
+        self.assertEqual(strategy, RuntimeStrategy("knowledge_answer", True, "knowledge_overview"))
+
     def test_general_mode_does_not_select_a_knowledge_operation(self) -> None:
         strategy = decide_strategy("请解释什么是向量数据库", [], False)
 
