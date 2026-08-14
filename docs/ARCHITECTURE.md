@@ -259,3 +259,6 @@ START
 **后端主要依赖**：FastAPI、PyJWT、pwdlib（Argon2）、psycopg、pgvector、python-dotenv、Alembic、SQLAlchemy（仅迁移执行）、LangChain OpenAI、LangGraph、MinIO SDK、Redis、RQ、PyMuPDF、python-docx、FlagEmbedding（BGE-M3 + Reranker）。
 
 **基础设施**：PostgreSQL（pgvector 扩展）、Redis、MinIO、Docker Compose。
+# 2026-08-14：LangGraph 知识库概览分支
+
+在既有“请求分析”之后，概览类问题进入 `knowledge_overview` 分支：读取当前用户授权范围内的 ready 文档及其受限代表性片段，再由模型生成“文件、主题、可回答问题”概览。具体事实问题仍进入语义检索和证据评估分支。概览与语义检索均通过现有 Agent 范围查询隔离用户资料，且不改变 SSE 事件协议。

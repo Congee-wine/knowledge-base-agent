@@ -17,6 +17,8 @@ KEYWORD_RECALL_LIMIT = 20
 CONTEXT_LIMIT = 5
 DOCUMENT_CONTEXT_LIMIT = 2
 DOCUMENT_LIMIT = 3
+OVERVIEW_DOCUMENT_LIMIT = 30
+OVERVIEW_SNIPPET_CHARACTERS = 500
 RRF_K = 60
 RERANK_MIN_SCORE = 0.30
 
@@ -105,18 +107,30 @@ def _select_context_sources(candidates: list[RetrievalSource]) -> list[Retrieval
 def execute_knowledge_operation(
     operation: KnowledgeOperation, user_id: str, agent_id: str, query: str,
 ) -> list[RetrievalSource]:
-    if operation == "document_catalog":
-        return knowledge_retrieval.list_agent_documents(user_id, agent_id)
+    if operation == "knowledge_overview":
+        return knowledge_retrieval.list_agent_documents(user_id, agent_id, OVERVIEW_DOCUMENT_LIMIT)
     if operation == "semantic_search":
         return retrieve_for_agent(user_id, agent_id, query)
     return []
 
 
-def build_catalog_answer(sources: list[RetrievalSource]) -> str:
+def build_knowledge_overview_context(sources: list[RetrievalSource]) -> str | None:
+    """Build a bounded, document-level context for a knowledge-base overview."""
     if not sources:
-        return "当前没有可访问且已完成索引的知识库文件。"
-    lines = [f"- {source.document_name}（{_document_type(source.document_name)}）" for source in sources]
-    return f"当前可访问且已完成索引的知识库文件共 {len(sources)} 份：\n" + "\n".join(lines)
+        return None
+    sections = []
+    for index, source in enumerate(sources, start=1):
+        location = source.to_citation()["location"] or "未定位段落"
+        snippet = source.content.strip()[:OVERVIEW_SNIPPET_CHARACTERS]
+        sections.append(
+            f"[资料 {index}] 文件：{source.document_name}（{_document_type(source.document_name)}，{location}）\n"
+            f"代表性内容片段：{snippet}"
+        )
+    return (
+        "以下是当前用户有权访问、且已完成索引的知识库资料概览依据。每份资料只提供一个受长度限制的代表性片段。"
+        "只能依据这些文件名和片段概括，不能臆测未展示的文件内容。\n\n"
+        + "\n\n".join(sections)
+    )
 
 
 def build_no_knowledge_answer() -> str:

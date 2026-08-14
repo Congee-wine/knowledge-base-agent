@@ -76,7 +76,7 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertEqual(answer_chunks, ["资料", "回答"])
 
     @patch("services.agent_runtime.has_knowledge_scope", return_value=True)
-    @patch("services.agent_runtime.stream_answer")
+    @patch("services.agent_runtime.stream_answer", return_value=iter(["资料概览"] ))
     @patch("services.agent_runtime.execute_knowledge_operation", return_value=[])
     @patch("services.agent_runtime.has_ready_knowledge", return_value=True)
     def test_no_matching_knowledge_does_not_fall_back_to_model_answer(self, _: object, __: object, stream_answer: object, ___: object) -> None:
@@ -102,7 +102,7 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertIn("\u77e5\u8bc6\u5e93", str(events[-1]["content"]))
 
     @patch("services.agent_runtime.has_knowledge_scope", return_value=True)
-    @patch("services.agent_runtime.stream_answer")
+    @patch("services.agent_runtime.stream_answer", return_value=iter(["资料概览"]))
     @patch("services.agent_runtime.execute_knowledge_operation")
     @patch("services.agent_runtime.has_ready_knowledge", return_value=False)
     def test_missing_ready_documents_reports_knowledge_base_unavailable(self, _: object, execute_operation: object, stream_answer: object, __: object) -> None:
@@ -114,10 +114,10 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertIn("没有已完成索引", str(events[-1]["content"]))
 
     @patch("services.agent_runtime.has_knowledge_scope", return_value=True)
-    @patch("services.agent_runtime.stream_answer")
+    @patch("services.agent_runtime.stream_answer", return_value=iter(["资料概览"]))
     @patch("services.agent_runtime.execute_knowledge_operation")
     @patch("services.agent_runtime.has_ready_knowledge", return_value=True)
-    def test_catalog_operation_lists_tool_documents_without_model(self, _: object, execute_operation: object, stream_answer: object, __: object) -> None:
+    def test_overview_operation_uses_documents_to_generate_a_model_overview(self, _: object, execute_operation: object, stream_answer: object, __: object) -> None:
         execute_operation.return_value = [
             RetrievalSource("chunk-1", "document-1", "资料一.md", "内容", None, 0, None, 1.0),
             RetrievalSource("chunk-2", "document-2", "资料二.pdf", "内容", None, 0, None, 1.0),
@@ -125,10 +125,12 @@ class AgentRuntimeTests(unittest.TestCase):
 
         events = list(stream_with_retrieval("user-1", "agent-1", "personal", None, [], "知识库有哪些文件？", False))
 
-        execute_operation.assert_called_once_with("document_catalog", "user-1", "agent-1", "知识库有哪些文件？")
-        stream_answer.assert_not_called()
-        self.assertIn("资料一.md", str(events[-1]["content"]))
-        self.assertIn("资料二.pdf", str(events[-1]["content"]))
+        execute_operation.assert_called_once_with("knowledge_overview", "user-1", "agent-1", "知识库有哪些文件？")
+        stream_answer.assert_called_once()
+        self.assertIn("资料概览", [event["content"] for event in events if event["type"] == "answer_delta"])
+        context = stream_answer.call_args.args[3]
+        self.assertIn("资料一.md", context)
+        self.assertIn("资料二.pdf", context)
 
 
 if __name__ == "__main__":

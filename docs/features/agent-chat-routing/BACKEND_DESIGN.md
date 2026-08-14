@@ -50,3 +50,16 @@ evaluate_evidence
 - 目录查询异常与语义检索异常统一进入 `retrieval_failed` 终态，并记录可定位日志。
 - 无 ready 文档与无可靠检索来源分别使用 `no_documents`、`no_match` 阶段。
 - 直接模型分支不附带来源，且模型提示词不得声称已检索资料。
+# 2026-08-14 调整：知识库概览路径
+
+`agent_strategy` 将概览类问题标记为 `knowledge_overview`，与 `semantic_search` 区分。
+
+```text
+analyze_request
+  ├─ knowledge_overview → execute_knowledge_operation → generate_answer → END
+  └─ semantic_search    → execute_knowledge_operation → evaluate_evidence → generate_answer / no_match / retrieval_failed
+```
+
+- `retrieval.execute_knowledge_operation` 对概览从授权范围读取每份 ready 文档的首个已索引片段；查询本身仍由仓储层按用户和 Agent 范围隔离。
+- `build_knowledge_overview_context` 负责限制每个片段为 500 字符，避免把完整资料传给模型。
+- 概览专用提示词要求模型只根据文件名与片段生成“资料—主题—可回答问题”摘要；具体事实问答不改变原有检索和证据评估规则。
