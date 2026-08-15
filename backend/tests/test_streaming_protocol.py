@@ -53,6 +53,20 @@ class StreamingProtocolTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Only personal agents"):
             agent_preview.stream_preview("user-1", "agent-1", request)
 
+    @patch("services.agent_preview.stream_with_retrieval", return_value=iter([]))
+    @patch("services.agent_preview.get_agent", return_value=SimpleNamespace(kind="personal"))
+    def test_preview_forwards_knowledge_base_switch(self, _: object, stream_with_retrieval: object) -> None:
+        request = SimpleNamespace(
+            history=[],
+            draft_agent=SimpleNamespace(system_prompt="prompt", name="测试智能体", description=None),
+            content="hello",
+            use_knowledge_base=False,
+        )
+
+        list(agent_preview.stream_preview("user-1", "agent-1", request))
+
+        self.assertEqual(stream_with_retrieval.call_args.args[6], False)
+
     @patch("services.conversations.conversation_repository.complete_stream_generation")
     @patch("services.conversations.stream_with_retrieval", return_value=iter([{"type": "answer_delta", "content": "answer"}]))
     @patch("services.conversations.conversation_repository.list_valid_history")

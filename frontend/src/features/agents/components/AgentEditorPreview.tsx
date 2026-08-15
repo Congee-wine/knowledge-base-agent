@@ -5,9 +5,9 @@ import { useStreamingChat } from '../../chat/hooks/useStreamingChat'
 import type { ChatAgent } from '../../../types/chat'
 import { PersonalAgentWelcome } from './PersonalAgentWelcome'
 
-type AgentEditorPreviewProps = { agent: ChatAgent }
+type AgentEditorPreviewProps = { agent: ChatAgent; knowledgeBaseAvailable: boolean }
 
-export function AgentEditorPreview({ agent }: AgentEditorPreviewProps) {
+export function AgentEditorPreview({ agent, knowledgeBaseAvailable }: AgentEditorPreviewProps) {
   const [draftMessage, setDraftMessage] = useState('')
   const stream = useStreamingChat()
 
@@ -29,9 +29,10 @@ export function AgentEditorPreview({ agent }: AgentEditorPreviewProps) {
           value={draftMessage}
           onChange={setDraftMessage}
           onStop={() => void stream.stop()}
-          onSubmit={content => {
+          knowledgeBaseAvailable={knowledgeBaseAvailable}
+          onSubmit={(content, useKnowledgeBase) => {
             setDraftMessage('')
-            void stream.send({ agent, content, conversationId: null, preview: true })
+            void stream.send({ agent, content, conversationId: null, preview: true, useKnowledgeBase })
           }}
         />
       </div>

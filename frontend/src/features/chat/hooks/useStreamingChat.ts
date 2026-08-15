@@ -173,7 +173,7 @@ export function useStreamingChat() {
       ? `/api/agents/${encodeURIComponent(agent.id)}/preview/messages:stream`
       : `/api/conversations/messages:stream?agentId=${encodeURIComponent(agent.id)}${conversationId ? `&conversationId=${encodeURIComponent(conversationId)}` : ''}`
     const history = (storeRef.current.streams[key] ?? initialStream).messages
-    const body: Record<string, unknown> = preview ? { content, draftAgent: agent, history: history.map(message => ({ content: message.content, role: message.role })), requestId } : { content, requestId, useKnowledgeBase }
+    const body: Record<string, unknown> = preview ? { content, draftAgent: agent, history: history.map(message => ({ content: message.content, role: message.role })), requestId, useKnowledgeBase } : { content, requestId, useKnowledgeBase }
 
     try {
       let attempts = 0

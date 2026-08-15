@@ -17,7 +17,7 @@ def stream_preview(user_id: str, agent_id: str, data: PreviewStreamRequest) -> I
         yield {"type": "message_start"}
         try:
             yield from stream_with_retrieval(
-                user_id, agent_id, agent.kind, data.draft_agent.system_prompt, history, data.content, True,
+                user_id, agent_id, agent.kind, data.draft_agent.system_prompt, history, data.content, data.use_knowledge_base,
                 data.draft_agent.name, data.draft_agent.description,
             )
             yield {"type": "message_end", "generationStatus": "complete"}

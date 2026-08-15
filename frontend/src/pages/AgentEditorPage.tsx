@@ -64,6 +64,7 @@ export function AgentEditorPage() {
   const [saving, setSaving] = useState(false)
   const [scopeOpen, setScopeOpen] = useState(false)
   const [scopeIds, setScopeIds] = useState<string[]>([])
+  const [savedScopeIds, setSavedScopeIds] = useState<string[]>([])
 
   useEffect(() => {
     if (!agentQuery.data || agentQuery.data.kind !== 'personal') return
@@ -74,7 +75,10 @@ export function AgentEditorPage() {
 
   useEffect(() => {
     if (!agentId) return
-    void getAgentKnowledgeScope(agentId).then(scope => setScopeIds(scope.nodeIds)).catch(() => undefined)
+    void getAgentKnowledgeScope(agentId).then(scope => {
+      setScopeIds(scope.nodeIds)
+      setSavedScopeIds(scope.nodeIds)
+    }).catch(() => undefined)
   }, [agentId])
 
   if (agentQuery.isPending)
@@ -107,6 +111,7 @@ export function AgentEditorPage() {
     try {
       const savedAgent = await updateAgent(agent.id, toPayload(values, agent))
       await updateAgentKnowledgeScope(agent.id, scopeIds)
+      setSavedScopeIds(scopeIds)
       const savedValues = toFormValues(savedAgent)
       form.setFieldsValue(savedValues)
       setPreviewValues(savedValues)
@@ -291,6 +296,7 @@ export function AgentEditorPage() {
         </main>
         {previewValues && (
           <AgentEditorPreview
+            knowledgeBaseAvailable={savedScopeIds.length > 0}
             agent={{
               ...agent,
               ...previewValues,

@@ -174,10 +174,11 @@ def _check_knowledge_capability(state: AgentWorkflowState) -> dict[str, bool]:
         knowledge_enabled = state["use_knowledge_base"]
         return {"knowledge_enabled": knowledge_enabled, "has_bound_scope": False, "has_ready_knowledge": has_ready_knowledge(state["user_id"], state["agent_id"]) if knowledge_enabled else False}
     has_bound_scope = has_knowledge_scope(state["user_id"], state["agent_id"])
+    knowledge_enabled = state["use_knowledge_base"] and has_bound_scope
     return {
-        "knowledge_enabled": has_bound_scope,
+        "knowledge_enabled": knowledge_enabled,
         "has_bound_scope": has_bound_scope,
-        "has_ready_knowledge": has_ready_knowledge(state["user_id"], state["agent_id"]) if has_bound_scope else False,
+        "has_ready_knowledge": has_ready_knowledge(state["user_id"], state["agent_id"]) if knowledge_enabled else False,
     }
 
 

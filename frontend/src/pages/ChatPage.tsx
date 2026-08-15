@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { HistoryOutlined, PlusCircleOutlined } from '@ant-design/icons'
 import { Alert, Button, Result, Spin } from 'antd'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
 import { ChatComposer } from '../features/chat/components/ChatComposer'
 import { ChatHistorySkeleton } from '../features/chat/components/ChatHistorySkeleton'
@@ -15,6 +15,7 @@ import { useConversationDetail } from '../features/chat/hooks/useConversationDet
 import { useConversations } from '../features/chat/hooks/useConversations'
 import { useStreamingChat } from '../features/chat/hooks/useStreamingChat'
 import { mergeMessages } from '../features/chat/utils/mergeMessages'
+import { getAgentKnowledgeScope } from '../api/agents'
 
 export function ChatPage() {
   const { agentId } = useParams()
@@ -26,6 +27,11 @@ export function ChatPage() {
   const resolvedAgent = agentId ? agentQuery.data : entryQuery.data?.agent
   const isAgentPending = agentId ? agentQuery.isPending : entryQuery.isPending
   const isAgentError = agentId ? agentQuery.isError : entryQuery.isError
+  const knowledgeScopeQuery = useQuery({
+    queryKey: ['agents', resolvedAgent?.id, 'knowledge-scope'],
+    queryFn: () => getAgentKnowledgeScope(resolvedAgent!.id),
+    enabled: resolvedAgent?.kind === 'personal',
+  })
   const conversationsQuery = useConversations(resolvedAgent?.id)
   const conversationDetailQuery = useConversationDetail(selectedConversationId)
   const streaming = useStreamingChat()
@@ -102,6 +108,7 @@ export function ChatPage() {
   if (isAgentPending) return <div className="grid h-full place-items-center"><Spin tip="正在加载智能体" /></div>
   if (isAgentError || !resolvedAgent) return <Result status="404" title="智能体不存在或无权访问" subTitle="请从智能体列表选择可用智能体。" />
   const agent = resolvedAgent
+  const knowledgeBaseAvailable = agent.kind === 'builtin' || Boolean(knowledgeScopeQuery.data?.nodeIds.length)
 
   const createNewConversation = () => {
     setSelectedConversationId(null)
@@ -158,7 +165,7 @@ export function ChatPage() {
             : <ChatMessageList messages={displayedMessages} pendingAssistant={false} scrollable statusText={stream.statusText} />}
         {stream.error && <Alert className="mx-auto mt-3 w-full max-w-[810px]" message={stream.error} showIcon type="error" />}
       </div>
-      <ChatComposer agent={agent} sending={stream.sending} value={composerValue} onChange={setComposerValue} onStop={() => void streaming.stop(selectedConversationId)} onSubmit={sendMessage} />
+      <ChatComposer agent={agent} knowledgeBaseAvailable={knowledgeBaseAvailable} sending={stream.sending} value={composerValue} onChange={setComposerValue} onStop={() => void streaming.stop(selectedConversationId)} onSubmit={sendMessage} />
       <ConversationHistoryDrawer
         conversations={conversationsQuery.data?.items ?? []}
         creating={false}
